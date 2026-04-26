@@ -18,7 +18,7 @@ function isFiniteVector3(v: Vector3): boolean {
  * 프라운호퍼 D선 광선이 기본 입니다. 
  * 기본 색은 노란색입니다.
  */
-export class Ray {
+export default class Ray {
     private points: Vector3[];
     constructor(
         public readonly origin: Vector3,

@@ -1,3 +1,6 @@
+/**
+ * 프라운호퍼 파장과 색상
+ */
 export const WAVELENGTHS = {
     g: {nm: 435.84, color: "violet"},   // violet / blue-violet
     F: {nm: 486.1, color: "blue"},    // blue
@@ -7,6 +10,9 @@ export const WAVELENGTHS = {
     r: {nm: 706.52, color: "deep red"},   // deep red
   };
 
+/**
+ * 매질별 프라운오퍼 파장과 굴절률
+ */
 export const FRAUNHOFER_REFRACTIVE_INDICES = {
     air: {
       F: 1,
@@ -101,7 +107,10 @@ export const FRAUNHOFER_REFRACTIVE_INDICES = {
     },
   };
 
-  export const PUPIL_DIAMETER = {
+  /**
+   * 동공 크기
+   */
+  export const PUPIL_SIZE = {
     /** 축동 — 동공 수축 */
     constricted: 2.5,
     /** 일반 */
@@ -110,14 +119,30 @@ export const FRAUNHOFER_REFRACTIVE_INDICES = {
     dilated: 6,
   }
 
+  /**
+   * 눈 기준 디옵터
+   */
   export const EMMERTROPIC_DIOPTERS = 60;
 
-  export const CORNEA_SIZE = {
+  /**
+   * 각막 크기(구면, 비구면)
+   */
+  export const CORNEA_SIZE_SPHERIC = 11.4;
+  export const CORNEA_SIZE_ASPHERIC = {
     horizontal: 11.8,  // mm (평균)
     vertical: 11.0,    // mm (수평보다 작음)
   }
   
-  export const CRYLSTALLINE_LENS_SIZE = {
+  /**
+   * 수정체 크기(구면, 비구면)
+   */
+  export const CRYLSTALLINE_LENS_SIZE_SPHERIC =9.4;
+  export const CRYLSTALLINE_LENS_SIZE_ASPHERIC = {
     horizontal: 9.6,   // mm (평균)
     vertical: 9.2,     // mm (약간 타원)
   }
+
+  /**
+   * 망막 뒤 광선 연장 거리
+   */
+  export const RETINA_EXTRA_AFTER_MM = 18.00

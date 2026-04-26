@@ -1,24 +1,11 @@
-import { Surface } from "../../surfaces/surface";
+import Surface from "../../surfaces/surface";
 import { EyeModelParameter } from "./eyemodel-parameter";
 
 export class GullstrandParameter implements EyeModelParameter{
     static parameter = {
         unit: "mm",
         axis: "optical_axis_z",
-        origin: "cornea_anterior_vertex",
-        media: {
-            air: { n: 1.0 },
-            cornea: { n: 1.376 },
-            aqueous: { n: 1.336 },
-            lens_cortex: { n: 1.386 },
-            lens_nucleus: { n: 1.406 },
-            vitreous: { n: 1.336 },
-        },
-        size: {
-            cornea: 11, // ~ 12
-            lens: 9, // ~ 10
-            nucleus: 5, // ~ 7
-        },
+        origin: "cornea_anterior_vertex",               
         surfaces: [
             {
                 type: "spherical",
@@ -68,8 +55,13 @@ export class GullstrandParameter implements EyeModelParameter{
                 n_before: 1.386,
                 n_after: 1.336,
             },
-        ],
-        retina: { z: 24.0 },
+            {
+                type: "spherical-image",
+                name: "retina",
+                radius: -12.0,   // mm (대략적인 망막 곡률)
+                z: 24.0   // 중심 위치
+            }
+        ],        
     };
     constructor() {}
     createSurface(): Surface[] {

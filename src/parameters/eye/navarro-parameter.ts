@@ -1,4 +1,4 @@
-import { Surface } from "../../surfaces/surface";
+import Surface from "../../surfaces/surface";
 import { EyeModelParameter } from "./eyemodel-parameter";
 
 export class NavarroParameter implements EyeModelParameter{
@@ -45,11 +45,12 @@ export class NavarroParameter implements EyeModelParameter{
                 n_before: 1.42,
                 n_after: 1.336,
             },
+            {
+                type: "spherical-image",
+                name: "retina",
+                radius: -12.0,   // mm (대략적인 망막 곡률)
+                z: 24.04   // 중심 위치
+            }
         ],
-        retina: {
-            type: "spherical-image",
-            radius: -12.0,   // mm (대략적인 망막 곡률)
-            z: 24.0   // 중심 위치
-          }
     };
 }
