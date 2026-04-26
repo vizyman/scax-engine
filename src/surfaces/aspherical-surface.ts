@@ -18,7 +18,7 @@ export type AsphericalSurfaceProps = {
     n_after: number;   
 }
     
-export class AsphericalSurface extends Surface {
+export default class AsphericalSurface extends Surface {
     private type: string = "";
     private name: string = "";
     private x: number = 0;
