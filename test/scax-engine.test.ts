@@ -4,7 +4,7 @@ import SCAXEngine from "../src/scax-engine";
 
 describe("SCAXEngine", () => {
   describe("calculateInducedAstigmatism", () => {
-    it("returns null when all cylinder powers are zero", () => {
+    it("모든 원주 도수가 0이면 null을 반환한다", () => {
       const simulator = new SCAXEngine({
         eye: { s: 0, c: 0, ax: 0 },
         lens: [],
@@ -16,7 +16,7 @@ describe("SCAXEngine", () => {
       expect(result.lens).toBeNull();
     });
 
-    it("calculates valid astigmatism from eye cylinder only", () => {
+    it("눈의 원주 도수만으로 유효한 난시를 계산한다", () => {
       const simulator = new SCAXEngine({
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
@@ -28,7 +28,7 @@ describe("SCAXEngine", () => {
       expect(result.induced?.tabo_deg).toBeLessThan(180);
     });
 
-    it("combines eye and multiple lens powers without producing invalid values", () => {
+    it("눈과 여러 렌즈 도수를 합성해도 비정상 값이 발생하지 않는다", () => {
       const simulator = new SCAXEngine({
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
@@ -44,7 +44,7 @@ describe("SCAXEngine", () => {
       expect(Number.isFinite(result.induced?.tabo_deg)).toBe(true);
     });
 
-    it("ignores invalid cylinder inputs safely", () => {
+    it("유효하지 않은 원주 도수 입력을 안전하게 무시한다", () => {
       const simulator = new SCAXEngine({
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
@@ -58,8 +58,8 @@ describe("SCAXEngine", () => {
     });
   });
 
-  describe("simulate and rayTracing", () => {
-    it("returns traced rays array and induced astigmatism field", () => {
+  describe("simulate 및 rayTracing", () => {
+    it("추적된 광선 배열과 유발 난시 필드를 반환한다", () => {
       const simulator = new SCAXEngine({
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
@@ -68,7 +68,7 @@ describe("SCAXEngine", () => {
       expect(result).toHaveProperty("induced_astigmatism");
     });
 
-    it("does not increase traced ray count with a constricted pupil", () => {
+    it("동공이 축동되면 추적 광선 수가 증가하지 않는다", () => {
       const withoutPupilFilter = new SCAXEngine({
         light_source: { type: "grid", width: 10, height: 10, division: 6, z: -10, vergence: 0 },
         pupil_type: "neutral",

@@ -114,6 +114,20 @@ function applyLensDecenterX(simulator: SCAXEngine, decenterMm: number) {
   }
 }
 
+function applyLensDecenterY(simulator: SCAXEngine, decenterMm: number) {
+  const lenses = (simulator as unknown as { lens: unknown[] }).lens;
+  for (const lens of lenses) {
+    const mutable = lens as {
+      front?: { position?: Vector3 };
+      back?: { position?: Vector3 | null };
+      position?: Vector3;
+    };
+    if (mutable.position) mutable.position.y += decenterMm;
+    if (mutable.front?.position) mutable.front.position.y += decenterMm;
+    if (mutable.back?.position) mutable.back.position.y += decenterMm;
+  }
+}
+
 function applyLensTiltY(simulator: SCAXEngine, tiltDeg: number) {
   const lenses = (simulator as unknown as { lens: unknown[] }).lens;
   for (const lens of lenses) {
@@ -128,8 +142,39 @@ function applyLensTiltY(simulator: SCAXEngine, tiltDeg: number) {
   }
 }
 
-describe("eyeglass behavior", () => {
-  it("reflects spectacle power change on emmetropic eye focus", () => {
+function angularShiftFromCentered(
+  lensPowerD: number,
+  decenterMm: number,
+  axis: "x" | "y",
+) {
+  const centered = createSimulator({ s: 0, c: 0, ax: 0 }, [createLensSpec({ s: lensPowerD, c: 0, ax: 0 })]);
+  const decentered = createSimulator({ s: 0, c: 0, ax: 0 }, [createLensSpec({ s: lensPowerD, c: 0, ax: 0 })]);
+  if (axis === "x") {
+    applyLensDecenterX(decentered, decenterMm);
+  } else {
+    applyLensDecenterY(decentered, decenterMm);
+  }
+
+  const dirCentered = getChiefRayDirection(centered);
+  const dirDecentered = getChiefRayDirection(decentered);
+  const centeredAngle = axis === "x"
+    ? Math.atan2(dirCentered.x, dirCentered.z)
+    : Math.atan2(dirCentered.y, dirCentered.z);
+  const decenteredAngle = axis === "x"
+    ? Math.atan2(dirDecentered.x, dirDecentered.z)
+    : Math.atan2(dirDecentered.y, dirDecentered.z);
+
+  return decenteredAngle - centeredAngle;
+}
+
+function expectedPrismAngleRad(lensPowerD: number, decenterMm: number) {
+  // 프렌티스 공식: Prism(Δ) = c(cm) * F(D), tan(theta)=Δ/100
+  const expectedPrismDiopter = Math.abs((decenterMm / 10) * lensPowerD);
+  return Math.atan(expectedPrismDiopter / 100);
+}
+
+describe("안경 렌즈 동작", () => {
+  it("정시안에서 안경 구면 도수 변화가 초점 위치에 반영된다", () => {
     const emmetropeNoLens = createSimulator({ s: 0, c: 0, ax: 0 }, []);
     const emmetropeWithPlusLens = createSimulator({ s: 0, c: 0, ax: 0 }, [createLensSpec({ s: 2, c: 0, ax: 0 })]);
 
@@ -138,14 +183,14 @@ describe("eyeglass behavior", () => {
     expect(zWithPlusLens).toBeGreaterThan(zWithoutLens);
   });
 
-  it("returns ametropic eye close to emmetropic focus when corrected lens is applied", () => {
+  it("굴절이상안에 교정 렌즈를 적용하면 정시안 초점에 가깝게 수렴한다", () => {
     const emmetrope = createSimulator({ s: 0, c: 0, ax: 0 }, []);
     const ametropicEye = { s: 4, c: 0, ax: 0 };
     const myopeWithoutLens = createSimulator(ametropicEye, []);
     const zEmmetrope = extractDLineApproxCenterZ(emmetrope);
     const zMyopeWithoutLens = extractDLineApproxCenterZ(myopeWithoutLens);
 
-    // Simulate practical refraction: find the spectacle sphere that best restores emmetropic focus.
+    // 실제 굴절검사처럼 정시안 초점을 가장 잘 복원하는 안경 구면 도수를 탐색한다.
     let bestLensPower = 0;
     let bestError = Number.POSITIVE_INFINITY;
     let bestCorrectedZ = Number.NaN;
@@ -165,38 +210,80 @@ describe("eyeglass behavior", () => {
     expect(Number.isFinite(bestError)).toBe(true);
   });
 
-  it("calculates induced astigmatism correctly for mismatched eye/lens cylinder", () => {
+  it("눈/렌즈 원주 도수가 불일치할 때 유발 난시를 올바르게 계산한다", () => {
     const simulator = createSimulator({ s: 0, c: 0, ax: 0 }, []);
     const eye = { s: 0, c: -2.0, ax: 180 };
     const lens = [createLensSpec({ s: 0, c: +1.0, ax: 90 })];
     const result = simulator.calculateInducedAstigmatism(eye, lens);
     expect(result.induced).not.toBeNull();
 
-    // Power-vector (J0/J45) expected magnitude.
+    // 파워 벡터(J0/J45) 기반 기대 난시 크기
     const dEye = 2.0;
     const dLens = -1.0;
     const expectedInducedD = Math.abs(dEye - dLens);
     expect(result.induced!.d).toBeCloseTo(expectedInducedD, 6);
   });
 
-  it("matches decentration-induced prism to Prentice formula trend", () => {
-    const lensPowerD = 5;
-    const decenterMm = 4;
-    const centered = createSimulator({ s: 0, c: 0, ax: 0 }, [createLensSpec({ s: lensPowerD, c: 0, ax: 0 })]);
-    const decentered = createSimulator({ s: 0, c: 0, ax: 0 }, [createLensSpec({ s: lensPowerD, c: 0, ax: 0 })]);
-    applyLensDecenterX(decentered, decenterMm);
-
-    const dirCentered = getChiefRayDirection(centered);
-    const dirDecentered = getChiefRayDirection(decentered);
-    const deltaAngleRad = Math.abs(Math.atan2(dirDecentered.x, dirDecentered.z) - Math.atan2(dirCentered.x, dirCentered.z));
-
-    // Prentice: Prism(Δ) = c(cm) * F(D), and tan(theta)=Δ/100.
-    const expectedPrismDiopter = (decenterMm / 10) * lensPowerD;
-    const expectedAngleRad = Math.atan(expectedPrismDiopter / 100);
-    expect(deltaAngleRad).toBeCloseTo(expectedAngleRad, 1);
+  it.each([
+    { lensPowerD: +2, decenterMm: 1, axis: "x" as const },
+    { lensPowerD: +4, decenterMm: 2, axis: "x" as const },
+    { lensPowerD: +8, decenterMm: 6, axis: "x" as const },
+    { lensPowerD: -2, decenterMm: 1, axis: "x" as const },
+    { lensPowerD: -4, decenterMm: 2, axis: "x" as const },
+    { lensPowerD: -8, decenterMm: 6, axis: "x" as const },
+    { lensPowerD: +4, decenterMm: 2, axis: "y" as const },
+    { lensPowerD: +8, decenterMm: 6, axis: "y" as const },
+    { lensPowerD: -4, decenterMm: 2, axis: "y" as const },
+    { lensPowerD: -8, decenterMm: 6, axis: "y" as const },
+  ])("프렌티스 공식 크기와 일치한다 (F=$lensPowerD D, c=$decenterMm mm, axis=$axis)", ({ lensPowerD, decenterMm, axis }) => {
+    const deltaAngleRad = Math.abs(angularShiftFromCentered(lensPowerD, decenterMm, axis));
+    expect(deltaAngleRad).toBeCloseTo(expectedPrismAngleRad(lensPowerD, decenterMm), 1);
   });
 
-  it("shows tilt-induced meridional change on toric spectacle lens", () => {
+  it.each([
+    { lensPowerD: +2, axis: "x" as const },
+    { lensPowerD: +4, axis: "x" as const },
+    { lensPowerD: +8, axis: "x" as const },
+    { lensPowerD: +4, axis: "y" as const },
+    { lensPowerD: +8, axis: "y" as const },
+  ])("편위량 증가에 따라 프리즘 각도가 비례적으로 증가한다 (F=$lensPowerD D, axis=$axis)", ({ lensPowerD, axis }) => {
+    const shiftAt1mm = Math.abs(angularShiftFromCentered(lensPowerD, 1, axis));
+    const shiftAt2mm = Math.abs(angularShiftFromCentered(lensPowerD, 2, axis));
+    const shiftAt4mm = Math.abs(angularShiftFromCentered(lensPowerD, 4, axis));
+    expect(shiftAt1mm).toBeGreaterThan(0);
+    expect(shiftAt2mm / shiftAt1mm).toBeCloseTo(2, 1);
+    expect(shiftAt4mm / shiftAt2mm).toBeCloseTo(2, 1);
+  });
+
+  it.each([
+    { lensPowerD: +2, axis: "x" as const },
+    { lensPowerD: +4, axis: "x" as const },
+    { lensPowerD: +8, axis: "x" as const },
+    { lensPowerD: +4, axis: "y" as const },
+    { lensPowerD: +8, axis: "y" as const },
+  ])("편위 방향을 반대로 주면 프리즘 방향도 반전된다 (F=$lensPowerD D, axis=$axis)", ({ lensPowerD, axis }) => {
+    const plusShift = angularShiftFromCentered(lensPowerD, +4, axis);
+    const minusShift = angularShiftFromCentered(lensPowerD, -4, axis);
+    expect(plusShift).not.toBe(0);
+    expect(Math.sign(plusShift)).toBe(-Math.sign(minusShift));
+    expect(Math.abs(plusShift)).toBeCloseTo(Math.abs(minusShift), 1);
+  });
+
+  it.each([
+    { decenterMm: 1, axis: "x" as const },
+    { decenterMm: 2, axis: "x" as const },
+    { decenterMm: 4, axis: "x" as const },
+    { decenterMm: 2, axis: "y" as const },
+    { decenterMm: 4, axis: "y" as const },
+  ])("렌즈 도수 부호를 반대로 주면 프리즘 방향도 반전된다 (c=$decenterMm mm, axis=$axis)", ({ decenterMm, axis }) => {
+    const plusLensShift = angularShiftFromCentered(+5, decenterMm, axis);
+    const minusLensShift = angularShiftFromCentered(-5, decenterMm, axis);
+    expect(plusLensShift).not.toBe(0);
+    expect(Math.sign(plusLensShift)).toBe(-Math.sign(minusLensShift));
+    expect(Math.abs(plusLensShift)).toBeCloseTo(Math.abs(minusLensShift), 1);
+  });
+
+  it("토릭 안경렌즈에서 경사(tilt) 유발 자오선 변화를 보여준다", () => {
     const tiltDeg = 12;
     const noTilt = createSimulator({ s: 0, c: 0, ax: 0 }, [createLensSpec({ s: 0, c: -2, ax: 180 })]);
     const withTilt = createSimulator({ s: 0, c: 0, ax: 0 }, [createLensSpec({ s: 0, c: -2, ax: 180 })]);
@@ -207,7 +294,7 @@ describe("eyeglass behavior", () => {
     expect(Boolean(dWithTilt.has_astigmatism)).toBe(true);
     expect(dNoTilt.anterior).not.toBeNull();
     expect(dWithTilt.anterior).not.toBeNull();
-    // Lens tilt should alter meridional orientation or interval location in a measurable way.
+    // 렌즈 경사 시 자오선 방향 또는 Sturm 구간 위치가 측정 가능한 수준으로 변해야 한다.
     const axisNoTilt = dNoTilt.anterior?.profile?.angleMajorDeg ?? 0;
     const axisWithTilt = dWithTilt.anterior?.profile?.angleMajorDeg ?? 0;
     const axisDelta = Math.abs((((axisWithTilt - axisNoTilt) % 180) + 180) % 180);

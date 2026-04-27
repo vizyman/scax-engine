@@ -17,8 +17,8 @@ function applyKnownAffine(sx: number, sy: number) {
   };
 }
 
-describe("Affine distortion estimation", () => {
-  it("returns null when fewer than 4 pairs are provided", () => {
+describe("Affine 왜곡 추정", () => {
+  it("대응쌍이 4개 미만이면 null을 반환한다", () => {
     const affine = new Affine();
     const pairs: AffinePair[] = [
       { sx: 0, sy: 0, tx: 1, ty: 1 },
@@ -33,7 +33,7 @@ describe("Affine distortion estimation", () => {
     expect(affine.getLastPairs()).toEqual(pairs);
   });
 
-  it("recovers an exact affine transform with near-zero residual", () => {
+  it("잔차가 0에 가까운 정확한 affine 변환을 복원한다", () => {
     const affine = new Affine();
     const sourcePoints = [
       [-2, -1],
@@ -63,9 +63,9 @@ describe("Affine distortion estimation", () => {
     expect(result!.residuals.length).toBe(0);
   });
 
-  it("detects non-linear distortion as non-zero residual", () => {
+  it("비선형 왜곡을 0이 아닌 잔차로 감지한다", () => {
     const affine = new Affine();
-    const k = 0.015; // radial-like distortion strength
+    const k = 0.015; // 방사형 왜곡 유사 강도
     const sourcePoints = [
       [-4, -4],
       [-3, 1],

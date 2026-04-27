@@ -76,8 +76,8 @@ export default class SCAXEngine {
   private tracedRays: Ray[] = [];
   private sturm: Sturm;
   private affine: Affine;
-  private lastSturmGapAnalysis: unknown = null;
-  private lastAffineAnalysis: unknown = null;
+  private lastSturmGapAnalysis: ReturnType<Sturm["calculate"]> | null = null;
+  private lastAffineAnalysis: ReturnType<Affine["estimate"]> = null;
   private pupilDiameterMm: number | null;
   private retinaZMm: number | null;
   private hasPupilStop: boolean;

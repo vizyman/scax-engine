@@ -66,8 +66,8 @@ function angleDiff180(a: number, b: number) {
   return Math.min(raw, 180 - raw);
 }
 
-describe("eye model sturm behavior", () => {
-  it("matches approx_center to retina location for emmetropic eye in each model", () => {
+describe("눈 모델 Sturm 동작", () => {
+  it("각 모델의 정시안에서 approx_center가 망막 위치와 일치한다", () => {
     const modelCases = [
       { model: "gullstrand" as const, retinaZ: GullstrandParameter.parameter.surfaces.find((s) => s.name === "retina")?.z ?? 24 },
       { model: "navarro" as const, retinaZ: NavarroParameter.parameter.surfaces.find((s) => s.name === "retina")?.z ?? 24.04 },
@@ -80,7 +80,7 @@ describe("eye model sturm behavior", () => {
     }
   });
 
-  it("moves approx_center anteriorly as S decreases", () => {
+  it("S 값이 감소하면 approx_center가 전방으로 이동한다", () => {
     const modelCases: EyeModel[] = ["gullstrand", "navarro"];
     for (const model of modelCases) {
       const minus = extractDLineSturmInfo(createSimulator(model, { s: -6, c: 0, ax: 0 })).approx_center!.z;
@@ -89,7 +89,7 @@ describe("eye model sturm behavior", () => {
     }
   });
 
-  it("moves approx_center posteriorly as S increases", () => {
+  it("S 값이 증가하면 approx_center가 후방으로 이동한다", () => {
     const modelCases: EyeModel[] = ["gullstrand", "navarro"];
     for (const model of modelCases) {
       const emmetrope = extractDLineSturmInfo(createSimulator(model, { s: 0, c: 0, ax: 0 })).approx_center!.z;
@@ -98,7 +98,7 @@ describe("eye model sturm behavior", () => {
     }
   });
 
-  it("forms valid sturm interval and meridian relationship when astigmatism is applied", () => {
+  it("난시를 적용하면 유효한 Sturm 구간과 자오선 관계를 형성한다", () => {
     const axisTABO = 180;
     const expectedDegAxis = TABOToDeg(axisTABO);
     const modelCases: EyeModel[] = ["gullstrand", "navarro"];

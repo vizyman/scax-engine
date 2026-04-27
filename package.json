@@ -1,9 +1,9 @@
 {
   "name": "scax-engine",
   "version": "0.1.0",
-  "description": "Lightweight TypeScript calculation utilities with ESM, CJS, and UMD builds.",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
+  "description": "Optical calculation engine for an eye model, with ESM, CJS, and UMD builds.",
+  "main": "./dist/scax-engine.cjs",
+  "module": "./dist/scax-engine.js",
   "types": "./dist/types/index.d.ts",
   "files": [
     "dist"
@@ -30,13 +30,13 @@
   "exports": {
     ".": {
       "types": "./dist/types/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "default": "./dist/index.js"
+      "import": "./dist/scax-engine.js",
+      "require": "./dist/scax-engine.cjs",
+      "default": "./dist/scax-engine.js"
     }
   },
-  "unpkg": "./dist/index.umd.js",
-  "jsdelivr": "./dist/index.umd.js",
+  "unpkg": "./dist/scax-engine.umd.js",
+  "jsdelivr": "./dist/scax-engine.umd.js",
   "bugs": {
     "url": "https://github.com/vizyman/scax-engine/issues"
   },
