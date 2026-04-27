@@ -31,7 +31,7 @@ const engine = new SCAXEngine({
   pupil_type: "neutral",
 });
 
-const result = engine.simulate();
+const result: ReturnType<SCAXEngine["simulate"]> = engine.simulate();
 console.log(result.traced_rays.length);
 console.log(result.induced_astigmatism);
 ```
@@ -58,79 +58,85 @@ Creates a simulation engine instance.
 ### Instance Methods
 
 - `simulate()`
+  ```ts
+  (): {
+    traced_rays: Ray[];
+    induced_astigmatism: {
+      induced: { d: number; tabo_deg: number } | null;
+      eye: { d: number; tabo_deg: number } | null;
+      lens: { d: number; tabo_deg: number } | null;
+    };
+  }
+  ```
   - Runs ray tracing and induced astigmatism calculation
-  - Return type: `{
-      traced_rays: Ray[];
-      induced_astigmatism: {
-        induced: { d: number; tabo_deg: number } | null;
-        eye: { d: number; tabo_deg: number } | null;
-        lens: { d: number; tabo_deg: number } | null;
-      };
-    }`
 
 - `getSturmGapAnalysis()`
-  - Returns latest Sturm analysis result
-  - Return type: `{
-      slices_info: {
-        count: number;
-        slices: Array<{
-          z: number;
-          ratio: number;
-          size: number;
-          profile: {
-            at: { x: number; y: number; z: number };
-            wMajor: number;
-            wMinor: number;
-            angleMajorDeg: number;
-            angleMinorDeg: number;
-          };
-        }>;
-      };
-      sturm_info: Array<{
-        line: "g" | "F" | "e" | "d" | "C" | "r";
-        wavelength_nm: number;
-        color: number | null;
-        has_astigmatism: boolean;
-        method: "sturm-interval-midpoint" | "minimum-ellipse";
-        anterior: {
-          z: number;
-          ratio: number;
-          size: number;
-          profile: {
-            at: { x: number; y: number; z: number };
-            wMajor: number;
-            wMinor: number;
-            angleMajorDeg: number;
-            angleMinorDeg: number;
-          };
-        } | null;
-        posterior: {
-          z: number;
-          ratio: number;
-          size: number;
-          profile: {
-            at: { x: number; y: number; z: number };
-            wMajor: number;
-            wMinor: number;
-            angleMajorDeg: number;
-            angleMinorDeg: number;
-          };
-        } | null;
-        approx_center: { x: number; y: number; z: number; mode: "top2-mid" | "min-size" | "top1-flat" } | null;
+  ```ts
+  (): {
+    slices_info: {
+      count: number;
+      slices: Array<{
+        z: number;
+        ratio: number;
+        size: number;
+        profile: {
+          at: { x: number; y: number; z: number };
+          wMajor: number;
+          wMinor: number;
+          angleMajorDeg: number;
+          angleMinorDeg: number;
+        };
       }>;
-    } | null`
+    };
+    sturm_info: Array<{
+      line: "g" | "F" | "e" | "d" | "C" | "r";
+      wavelength_nm: number;
+      color: number | null;
+      has_astigmatism: boolean;
+      method: "sturm-interval-midpoint" | "minimum-ellipse";
+      anterior: {
+        z: number;
+        ratio: number;
+        size: number;
+        profile: {
+          at: { x: number; y: number; z: number };
+          wMajor: number;
+          wMinor: number;
+          angleMajorDeg: number;
+          angleMinorDeg: number;
+        };
+      } | null;
+      posterior: {
+        z: number;
+        ratio: number;
+        size: number;
+        profile: {
+          at: { x: number; y: number; z: number };
+          wMajor: number;
+          wMinor: number;
+          angleMajorDeg: number;
+          angleMinorDeg: number;
+        };
+      } | null;
+      approx_center: { x: number; y: number; z: number; mode: "top2-mid" | "min-size" | "top1-flat" } | null;
+    }>;
+  } | null
+  ```
+  - Returns latest Sturm analysis result
 
 - `getAffineAnalysis()`
+  ```ts
+  (): {
+    a: number; b: number; c: number; d: number; e: number; f: number;
+    count: number;
+    residualAvgPct: number;
+    residualMaxPct: number;
+    residuals: Array<{
+      sx: number; sy: number; px: number; py: number; rx: number; ry: number; magnitude: number; pct: number;
+    }>;
+  } | null
+  ```
   - Returns latest affine analysis result
-  - Return type: `{
-      a: number; b: number; c: number; d: number; e: number; f: number;
-      count: number;
-      residualAvgPct: number;
-      residualMaxPct: number;
-      residuals: Array<{
-        sx: number; sy: number; px: number; py: number; rx: number; ry: number; magnitude: number; pct: number;
-      }>;
-    } | null`
 
 
 ## UMD Usage
