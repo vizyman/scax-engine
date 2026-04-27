@@ -7999,18 +7999,12 @@
             const approxCenter = this.buildApproxCenter(flattestTop2, smallestEllipse, preferTop2Mid);
             const anterior = flattestTop2[0] ?? null;
             const posterior = preferTop2Mid ? (flattestTop2[1] ?? null) : null;
-            const point = approxCenter ? { x: approxCenter.x, y: approxCenter.y, z: approxCenter.z } : null;
             return {
                 has_astigmatism: preferTop2Mid,
                 method: preferTop2Mid ? "sturm-interval-midpoint" : "minimum-ellipse",
                 anterior,
                 posterior,
-                point,
-                flattest_top2: flattestTop2,
-                smallest_ellipse: smallestEllipse,
                 approx_center: approxCenter,
-                effective_cylinder_d: effectiveCylinderD,
-                use_uv_midpoint: preferTop2Mid,
             };
         }
     }
