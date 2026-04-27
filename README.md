@@ -116,34 +116,7 @@ Creates a simulation engine instance.
             angleMinorDeg: number;
           };
         } | null;
-        point: { x: number; y: number; z: number } | null;
-        flattest_top2: Array<{
-          z: number;
-          ratio: number;
-          size: number;
-          profile: {
-            at: { x: number; y: number; z: number };
-            wMajor: number;
-            wMinor: number;
-            angleMajorDeg: number;
-            angleMinorDeg: number;
-          };
-        }>;
-        smallest_ellipse: {
-          z: number;
-          ratio: number;
-          size: number;
-          profile: {
-            at: { x: number; y: number; z: number };
-            wMajor: number;
-            wMinor: number;
-            angleMajorDeg: number;
-            angleMinorDeg: number;
-          };
-        } | null;
         approx_center: { x: number; y: number; z: number; mode: "top2-mid" | "min-size" | "top1-flat" } | null;
-        effective_cylinder_d: number;
-        use_uv_midpoint: boolean;
       }>;
     } | null`
 

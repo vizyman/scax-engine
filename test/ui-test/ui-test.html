@@ -1030,7 +1030,7 @@
           const color = Number.isFinite(item?.color) ? item.color : 0x60a5fa;
           const anteriorPoint = toFinitePoint(item?.anterior?.profile?.at);
           const posteriorPoint = toFinitePoint(item?.posterior?.profile?.at);
-          const approxCenterPoint = toFinitePoint(item?.approx_center || item?.point);
+          const approxCenterPoint = toFinitePoint(item?.approx_center);
           const hasAstigmatism = Boolean(item?.has_astigmatism);
 
           if (anteriorPoint && posteriorPoint) {
@@ -1051,12 +1051,6 @@
           if (approxCenterPoint) {
             createMarker(approxCenterPoint, 0xffffff, 0.7);
             sturmApproxMarkerCount += 1;
-          } else {
-            const fallbackPoint = toFinitePoint(item?.point);
-            if (fallbackPoint) {
-              createMarker(fallbackPoint, 0xffffff, 0.7);
-              sturmFallbackPointCount += 1;
-            }
           }
         });
 
