@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "clean": "rimraf dist",
-    "build": "npm run clean && tsc -p tsconfig.types.json && rollup -c",
+    "build": "npm run clean && tsc -p tsconfig.types.json && rollup -c rollup.config.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
