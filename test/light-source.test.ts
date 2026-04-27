@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import SCAXEngine from "../src/scax-engine";
 import { GridRGLightSource } from "../src/light-sources/light-source";
 import { GullstrandParameter } from "../src/parameters/eye/gullstrand-parameter";
+import SCAXEngine from "../src/scax-engine";
 
 type SturmInfo = {
   line: string;

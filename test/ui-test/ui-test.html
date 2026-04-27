@@ -1113,7 +1113,7 @@
           if (hasAstigmatism && createOrientedFocalLine(item?.posterior?.profile, color)) sturmFocalLineCount += 1;
 
           if (approxCenterPoint) {
-            createMarker(approxCenterPoint, 0xffffff, 0.7);
+            createMarker(approxCenterPoint, color, 0.7);
             sturmApproxMarkerCount += 1;
           }
         });

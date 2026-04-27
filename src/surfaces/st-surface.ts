@@ -5,6 +5,12 @@ import {
   ST_DEFAULT_THICKNESS_MM,
   ST_POWER_EPS_D,
 } from "../parameters/constants";
+import {
+  FraunhoferLine,
+  normalizeRefractiveIndexSpec,
+  RefractiveIndexSpec,
+  resolveRefractiveIndex,
+} from "../optics/refractive-index";
 import Ray from "../ray/ray";
 import SphericalSurface, { SphericalSurfaceProps } from "./spherical-surface";
 import Surface from "./surface";
@@ -18,9 +24,9 @@ export type STSurfaceProps = {
   s: number;
   c: number;
   ax: number;
-  n_before: number;
-  n: number;
-  n_after: number;
+  n_before: RefractiveIndexSpec;
+  n: RefractiveIndexSpec;
+  n_after: RefractiveIndexSpec;
   referencePoint?: { x: number, y: number, z: number };
   thickness?: number;
 }
@@ -29,9 +35,9 @@ export default class STSurface extends Surface {
   private s: number = 0;
   private c: number = 0;
   private ax: number = 0;
-  private n_before: number = 0;
-  private n: number = 0;
-  private n_after: number = 0;
+  private n_before: RefractiveIndexSpec = 1.0;
+  private n: RefractiveIndexSpec = 1.0;
+  private n_after: RefractiveIndexSpec = 1.0;
   private thickness: number = 0;
   private front: SphericalSurface;
   private back: ToricSurface | null;
@@ -54,11 +60,11 @@ export default class STSurface extends Surface {
     this.s = s;
     this.c = c;
     this.ax = ax;
-    this.n_before = n_before;
-    this.n = n;
-    this.n_after = n_after;
-    this.frontRadiusMm = this.radiusFromPower(this.s, this.n_before, this.n);
-    this.backRadiusPerpMm = this.radiusFromPower(this.c, this.n, this.n_after);
+    this.n_before = normalizeRefractiveIndexSpec(n_before);
+    this.n = normalizeRefractiveIndexSpec(n);
+    this.n_after = normalizeRefractiveIndexSpec(n_after);
+    this.frontRadiusMm = this.radiusFromPower(this.s, this.refractiveIndexAtD(this.n_before), this.refractiveIndexAtD(this.n));
+    this.backRadiusPerpMm = this.radiusFromPower(this.c, this.refractiveIndexAtD(this.n), this.refractiveIndexAtD(this.n_after));
     const requestedThickness = Math.max(0, thickness);
     this.thickness = requestedThickness === 0
       ? this.optimizeThickness(0)
@@ -88,6 +94,10 @@ export default class STSurface extends Surface {
     }
     if (Math.abs(powerD) < ST_POWER_EPS_D) return Number.POSITIVE_INFINITY;
     return (1000 * (nAfter - nBefore)) / powerD;
+  }
+
+  private refractiveIndexAtD(spec: RefractiveIndexSpec) {
+    return resolveRefractiveIndex(spec, "d");
   }
 
   /**
@@ -133,6 +143,32 @@ export default class STSurface extends Surface {
       n_after: this.n,
     };
     return new ToricSurface(backProps);
+  }
+
+  private applyChromaticIndicesToSubSurfaces(ray: Ray) {
+    const line = ray.getFraunhoferLine() as FraunhoferLine;
+    const nBefore = resolveRefractiveIndex(this.n_before, line);
+    const n = resolveRefractiveIndex(this.n, line);
+    const nAfter = resolveRefractiveIndex(this.n_after, line);
+
+    const frontState = this.front as unknown as {
+      n_before: RefractiveIndexSpec;
+      n_after: RefractiveIndexSpec;
+    };
+    if (this.back) {
+      frontState.n_before = n;
+      frontState.n_after = nAfter;
+      const backState = this.back as unknown as {
+        n_before: RefractiveIndexSpec;
+        n_after: RefractiveIndexSpec;
+      };
+      backState.n_before = nBefore;
+      backState.n_after = n;
+      return;
+    }
+
+    frontState.n_before = nBefore;
+    frontState.n_after = n;
   }
 
   /**
@@ -230,6 +266,7 @@ export default class STSurface extends Surface {
   }
 
   refract(ray: Ray): Ray | null {
+    this.applyChromaticIndicesToSubSurfaces(ray);
     // 원통 성분이 없으면 단일(구면)면으로 처리합니다.
     if (!this.back) {
       const single = this.front.refract(ray);

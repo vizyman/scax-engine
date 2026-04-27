@@ -1,5 +1,11 @@
 import { Vector3 } from "three";
 import { EPSILON, RAY_SURFACE_ESCAPE_MM } from "../parameters/constants";
+import {
+  FraunhoferLine,
+  normalizeRefractiveIndexSpec,
+  RefractiveIndexSpec,
+  resolveRefractiveIndex,
+} from "../optics/refractive-index";
 import Ray from "../ray/ray";
 import Surface from "./surface";
 
@@ -10,8 +16,8 @@ export type AsphericalSurfaceProps = {
   tilt: { x: number, y: number };
   r: number;
   conic: number;
-  n_before: number;
-  n_after: number;
+  n_before: RefractiveIndexSpec;
+  n_after: RefractiveIndexSpec;
 }
 
 export class AsphericalSurface extends Surface {
@@ -29,16 +35,24 @@ export class AsphericalSurface extends Surface {
 
   private r: number = 0;
   private conic: number = 0;
-  private n_before: number = 0;
-  private n_after: number = 0;
+  private n_before: RefractiveIndexSpec = 1.0;
+  private n_after: RefractiveIndexSpec = 1.0;
 
   constructor(props: AsphericalSurfaceProps) {
     super({ type: "aspherical", name: props.name, position: props.position, tilt: props.tilt });
     const { r, conic = -1.0, n_before = 1.0, n_after = 1.0 } = props;
     this.r = r;
     this.conic = conic;
-    this.n_before = n_before;
-    this.n_after = n_after;
+    this.n_before = normalizeRefractiveIndexSpec(n_before);
+    this.n_after = normalizeRefractiveIndexSpec(n_after);
+  }
+
+  private refractiveIndicesForRay(ray: Ray) {
+    const line = ray.getFraunhoferLine() as FraunhoferLine;
+    return {
+      nBefore: resolveRefractiveIndex(this.n_before, line),
+      nAfter: resolveRefractiveIndex(this.n_after, line),
+    };
   }
 
   /**
@@ -251,7 +265,8 @@ export class AsphericalSurface extends Surface {
 
     const cos1 = Math.max(-1, Math.min(1, normalIntoSecond.dot(incidentDir)));
     const sin1Sq = Math.max(0, 1 - cos1 * cos1);
-    const sin2 = (this.n_before / this.n_after) * Math.sqrt(sin1Sq);
+    const { nBefore, nAfter } = this.refractiveIndicesForRay(ray);
+    const sin2 = (nBefore / nAfter) * Math.sqrt(sin1Sq);
 
     // 전반사(TIR)
     if (sin2 > 1 + 1e-10) return null;

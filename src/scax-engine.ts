@@ -135,9 +135,9 @@ export default class SCAXEngine {
       s: this.eyePower.s,
       c: this.eyePower.c,
       ax: this.eyePower.ax,
-      n_before: FRAUNHOFER_REFRACTIVE_INDICES.air.d,
-      n: FRAUNHOFER_REFRACTIVE_INDICES.cornea.d,
-      n_after: FRAUNHOFER_REFRACTIVE_INDICES.aqueous.d,
+      n_before: FRAUNHOFER_REFRACTIVE_INDICES.air,
+      n: FRAUNHOFER_REFRACTIVE_INDICES.cornea,
+      n_after: FRAUNHOFER_REFRACTIVE_INDICES.aqueous,
     });
     this.surfaces = [eyeSt, ...this.eyeModelParameter.createSurface()];
     this.hasPupilStop = false;
@@ -170,9 +170,9 @@ export default class SCAXEngine {
       s: Number(spec?.s ?? 0),
       c: Number(spec?.c ?? 0),
       ax: Number(spec?.ax ?? 0),
-      n_before: FRAUNHOFER_REFRACTIVE_INDICES.air.d,
-      n: FRAUNHOFER_REFRACTIVE_INDICES.crown_glass.d,
-      n_after: FRAUNHOFER_REFRACTIVE_INDICES.air.d,
+      n_before: FRAUNHOFER_REFRACTIVE_INDICES.air,
+      n: FRAUNHOFER_REFRACTIVE_INDICES.crown_glass,
+      n_after: FRAUNHOFER_REFRACTIVE_INDICES.air,
     }));
     this.sturm = new Sturm();
     this.affine = new Affine();

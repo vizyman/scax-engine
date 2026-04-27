@@ -125,8 +125,6 @@ export class GridRGLightSource extends LightSource {
   private division: number = 0;
   private z: number = 0;
   private vergence: number = 0;
-  private greenVergenceOffset: number = 1.0;
-  private redVergenceOffset: number = -3.0;
   constructor(props: GridRGLightSourceProps) {
     const { width, height, division = 4, z, vergence = 0 } = props;
 
@@ -163,14 +161,12 @@ export class GridRGLightSource extends LightSource {
           this.z,
           this.vergence,
           "e",
-          this.greenVergenceOffset,
         );
         this.createChromaticRayFromPoint(
           origin,
           this.z,
           this.vergence,
           "C",
-          this.redVergenceOffset,
         );
       }
     }
