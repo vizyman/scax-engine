@@ -182,6 +182,18 @@
         eyeS: toNumberParam("eyeS", -2.0),
         eyeC: toNumberParam("eyeC", -1.25),
         eyeAx: toNumberParam("eyeAx", 180),
+        lightSourceType: (function () {
+          const value = String(searchParams.get("lsType") || "grid");
+          if (value === "radial" || value === "grid_rg") return value;
+          return "grid";
+        })(),
+        lightWidth: toNumberParam("lsWidth", 0.5),
+        lightHeight: toNumberParam("lsHeight", 0.5),
+        lightDivision: toNumberParam("lsDivision", 5),
+        lightRadius: toNumberParam("lsRadius", 0.5),
+        lightAngleDivision: toNumberParam("lsAngleDivision", 8),
+        lightZ: toNumberParam("lsZ", -50),
+        lightVergence: toNumberParam("lsVergence", 0),
         spectacleEnabled: toBooleanParam("specOn", true),
         spectacleS: toNumberParam("specS", -3.0),
         spectacleC: toNumberParam("specC", -1.5),
@@ -227,12 +239,51 @@
         return lens;
       }
 
+      function buildLightSourceConfig(state) {
+        if (state.lightSourceType === "radial") {
+          return {
+            type: "radial",
+            radius: Number(state.lightRadius),
+            division: Math.max(4, Math.round(Number(state.lightDivision))),
+            angle_division: Math.max(4, Math.round(Number(state.lightAngleDivision))),
+            z: Number(state.lightZ),
+            vergence: Number(state.lightVergence),
+          };
+        }
+        if (state.lightSourceType === "grid_rg") {
+          return {
+            type: "grid_rg",
+            width: Number(state.lightWidth),
+            height: Number(state.lightHeight),
+            division: Math.max(4, Math.round(Number(state.lightDivision))),
+            z: Number(state.lightZ),
+            vergence: Number(state.lightVergence),
+          };
+        }
+        return {
+          type: "grid",
+          width: Number(state.lightWidth),
+          height: Number(state.lightHeight),
+          division: Math.max(4, Math.round(Number(state.lightDivision))),
+          z: Number(state.lightZ),
+          vergence: Number(state.lightVergence),
+        };
+      }
+
       function syncUrlWithState() {
         const params = new URLSearchParams();
         params.set("eyeModel", String(uiState.eyeModel));
         params.set("eyeS", String(uiState.eyeS));
         params.set("eyeC", String(uiState.eyeC));
         params.set("eyeAx", String(uiState.eyeAx));
+        params.set("lsType", String(uiState.lightSourceType));
+        params.set("lsWidth", String(uiState.lightWidth));
+        params.set("lsHeight", String(uiState.lightHeight));
+        params.set("lsDivision", String(uiState.lightDivision));
+        params.set("lsRadius", String(uiState.lightRadius));
+        params.set("lsAngleDivision", String(uiState.lightAngleDivision));
+        params.set("lsZ", String(uiState.lightZ));
+        params.set("lsVergence", String(uiState.lightVergence));
         params.set("specOn", String(uiState.spectacleEnabled));
         params.set("specS", String(uiState.spectacleS));
         params.set("specC", String(uiState.spectacleC));
@@ -269,7 +320,20 @@
       eyeFolder.add(uiState, "eyeC", -10, 10, 0.25).name("Eye C (D)").onFinishChange(requestSimulationRefresh);
       eyeFolder.add(uiState, "eyeAx", 0, 180, 1).name("Eye Axis").onFinishChange(requestSimulationRefresh);
 
-      const specFolder = gui.addFolder("3) Spectacle Lens");
+      const lightFolder = gui.addFolder("3) Light Source");
+      lightFolder
+        .add(uiState, "lightSourceType", ["grid", "grid_rg", "radial"])
+        .name("Type")
+        .onFinishChange(requestSimulationRefresh);
+      lightFolder.add(uiState, "lightWidth", 0, 20, 0.1).name("Grid Width (mm)").onFinishChange(requestSimulationRefresh);
+      lightFolder.add(uiState, "lightHeight", 0, 20, 0.1).name("Grid Height (mm)").onFinishChange(requestSimulationRefresh);
+      lightFolder.add(uiState, "lightRadius", 0, 20, 0.1).name("Radial Radius (mm)").onFinishChange(requestSimulationRefresh);
+      lightFolder.add(uiState, "lightDivision", 4, 40, 1).name("Division").onFinishChange(requestSimulationRefresh);
+      lightFolder.add(uiState, "lightAngleDivision", 4, 64, 1).name("Angle Division").onFinishChange(requestSimulationRefresh);
+      lightFolder.add(uiState, "lightZ", -200, 0, 0.1).name("Source Z (mm)").onFinishChange(requestSimulationRefresh);
+      lightFolder.add(uiState, "lightVergence", -20, 20, 0.1).name("Vergence (D)").onFinishChange(requestSimulationRefresh);
+
+      const specFolder = gui.addFolder("4) Spectacle Lens");
       specFolder.add(uiState, "spectacleEnabled").name("Insert Spectacle").onFinishChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectacleS", -20, 20, 0.25).name("Spec S (D)").onFinishChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectacleC", -10, 10, 0.25).name("Spec C (D)").onFinishChange(requestSimulationRefresh);
@@ -280,7 +344,7 @@
       specFolder.add(uiState, "spectacleTiltX", -30, 30, 0.1).name("Spec Tilt X (deg)").onFinishChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectacleTiltY", -30, 30, 0.1).name("Spec Tilt Y (deg)").onFinishChange(requestSimulationRefresh);
 
-      const xcylFolder = gui.addFolder("4) Cross Cylinder");
+      const xcylFolder = gui.addFolder("5) Cross Cylinder");
       xcylFolder.add(uiState, "crossCylinderEnabled").name("Insert Cross Cyl").onFinishChange(requestSimulationRefresh);
       xcylFolder.add(uiState, "crossCylinderS", -5, 5, 0.25).name("X-Cyl S (D)").onFinishChange(requestSimulationRefresh);
       xcylFolder.add(uiState, "crossCylinderC", -5, 5, 0.25).name("X-Cyl C (D)").onFinishChange(requestSimulationRefresh);
@@ -776,7 +840,7 @@
           eyeModel: uiState.eyeModel,
           eye: { s: uiState.eyeS, c: uiState.eyeC, ax: uiState.eyeAx },
           lens: buildLensConfigs(uiState),
-          light_source: { type: "grid", width: 0.5, height: 0.5, division: 5, z: -50, vergence: 0 },
+          light_source: buildLightSourceConfig(uiState),
         });
 
         const surfaces = []
@@ -1070,6 +1134,7 @@
         "global: window.ScaxEngine.SCAXEngine\n" +
         "config: model=" + uiState.eyeModel +
         ", eye=(" + uiState.eyeS + "," + uiState.eyeC + "," + uiState.eyeAx + ")" +
+        ", light=" + uiState.lightSourceType +
         ", spec=" + (uiState.spectacleEnabled ? "on" : "off") +
         ", x-cyl=" + (uiState.crossCylinderEnabled ? "on" : "off") + "\n" +
         "compound(back->front) check:\n" + compoundText + "\n" +

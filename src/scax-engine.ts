@@ -3,6 +3,8 @@ import Affine, { AffinePair } from "./affine/affine";
 import {
   GridLightSource,
   GridLightSourceProps,
+  GridRGLightSource,
+  GridRGLightSourceProps,
   LightSource,
   RadialLightSource,
   RadialLightSourceProps,
@@ -30,7 +32,8 @@ type PupilType = "constricted" | "neutral" | "dilated";
 
 type LightSourceConfig =
   | ({ type: "radial" } & RadialLightSourceProps)
-  | ({ type: "grid" } & GridLightSourceProps);
+  | ({ type: "grid" } & GridLightSourceProps)
+  | ({ type: "grid_rg" } & GridRGLightSourceProps);
 
 type LensConfig = {
   s: number;
@@ -175,7 +178,9 @@ export default class SCAXEngine {
     this.affine = new Affine();
     this.light_source = light_source.type === "radial"
       ? new RadialLightSource(light_source as RadialLightSourceProps)
-      : new GridLightSource(light_source as GridLightSourceProps);
+      : light_source.type === "grid_rg"
+        ? new GridRGLightSource(light_source as GridRGLightSourceProps)
+        : new GridLightSource(light_source as GridLightSourceProps);
     this.retinaZMm = this.findRetinaZFromSurfaces();
   }
 

@@ -42,6 +42,23 @@ export class LightSource {
     );
   }
 
+  protected createChromaticRayFromPoint(
+    origin: Vector3,
+    z: number,
+    vergence: number,
+    line: "e" | "C",
+    chromaticVergenceOffset = 0,
+  ) {
+    const direction = this.directionFromVergence(origin, z, vergence + chromaticVergenceOffset);
+    this.addRay(
+      new Ray({
+        origin,
+        direction,
+        frounhofer_line: line,
+      }),
+    );
+  }
+
   addRay(ray: Ray) {
     this.rays.push(ray.clone());
   }
@@ -96,6 +113,65 @@ export class GridLightSource extends LightSource {
         const x = xStart + xi * xStep;
         const origin = new Vector3(x, y, this.z);
         this.createRayFromPoint(origin, this.z, this.vergence);
+      }
+    }
+  }
+}
+
+export type GridRGLightSourceProps = GridLightSourceProps;
+export class GridRGLightSource extends LightSource {
+  private width: number = 0;
+  private height: number = 0;
+  private division: number = 0;
+  private z: number = 0;
+  private vergence: number = 0;
+  private greenVergenceOffset: number = 1.0;
+  private redVergenceOffset: number = -3.0;
+  constructor(props: GridRGLightSourceProps) {
+    const { width, height, division = 4, z, vergence = 0 } = props;
+
+    if (division < 4) {
+      throw new Error("division must be greater than 4");
+    }
+
+    if (width < 0 || height < 0) {
+      throw new Error("width and height must be greater than 0");
+    }
+
+    if (z > 0) {
+      throw new Error("z must be lesser than 0");
+    }
+    super();
+    this.width = width;
+    this.height = height;
+    this.division = division;
+    this.z = z;
+    this.vergence = vergence;
+
+    const xStep = this.division > 1 ? this.width / (this.division - 1) : 0;
+    const yStep = this.division > 1 ? this.height / (this.division - 1) : 0;
+    const xStart = -this.width / 2;
+    const yStart = -this.height / 2;
+
+    for (let yi = 0; yi < this.division; yi += 1) {
+      const y = yStart + yi * yStep;
+      for (let xi = 0; xi < this.division; xi += 1) {
+        const x = xStart + xi * xStep;
+        const origin = new Vector3(x, y, this.z);
+        this.createChromaticRayFromPoint(
+          origin,
+          this.z,
+          this.vergence,
+          "e",
+          this.greenVergenceOffset,
+        );
+        this.createChromaticRayFromPoint(
+          origin,
+          this.z,
+          this.vergence,
+          "C",
+          this.redVergenceOffset,
+        );
       }
     }
   }
