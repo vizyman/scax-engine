@@ -119,28 +119,6 @@ export const PUPIL_SIZE = {
   dilated: 6,
 }
 
-/**
- * 눈 기준 디옵터
- */
-export const EMMERTROPIC_DIOPTERS = 60;
-
-/**
- * 각막 크기(구면, 비구면)
- */
-export const CORNEA_SIZE_SPHERIC = 11.4;
-export const CORNEA_SIZE_ASPHERIC = {
-  horizontal: 11.8,  // mm (평균)
-  vertical: 11.0,    // mm (수평보다 작음)
-}
-
-/**
- * 수정체 크기(구면, 비구면)
- */
-export const CRYLSTALLINE_LENS_SIZE_SPHERIC = 9.4;
-export const CRYLSTALLINE_LENS_SIZE_ASPHERIC = {
-  horizontal: 9.6,   // mm (평균)
-  vertical: 9.2,     // mm (약간 타원)
-}
 
 /**
  * 망막 뒤 광선 연장 거리

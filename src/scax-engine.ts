@@ -10,6 +10,8 @@ import {
 import {
   EYE_ST_SURFACE_OFFSET_MM,
   FRAUNHOFER_REFRACTIVE_INDICES,
+  PUPIL_SIZE,
+  RAY_SURFACE_ESCAPE_MM,
   SPECTACLE_VERTEX_DISTANCE_MM,
 } from "./parameters/constants";
 import { EyeModelParameter } from "./parameters/eye/eyemodel-parameter";
@@ -17,12 +19,14 @@ import { GullstrandParameter } from "./parameters/eye/gullstrand-parameter";
 import { NavarroParameter } from "./parameters/eye/navarro-parameter";
 import Ray from "./ray/ray";
 import Sturm from "./sturm/sturm";
+import ApertureStopSurface from "./surfaces/aperture-stop-surface";
 import STSurface from "./surfaces/st-surface";
 import Surface from "./surfaces/surface";
 import DegToTABO from "./utils/deg-to-tabo";
 import TABOToDeg from "./utils/tabo-to-deg";
 
 type EyeModel = "gullstrand" | "navarro";
+type PupilType = "constricted" | "neutral" | "dilated";
 
 type LightSourceConfig =
   | ({ type: "radial" } & RadialLightSourceProps)
@@ -41,8 +45,7 @@ export type SCAXEngineProps = {
   eye?: { s: number, c: number, ax: number };
   lens?: LensConfig[];
   light_source?: LightSourceConfig;
-  pupilDiameterMm?: number | null;
-  pupilPlaneZMm?: number | null;
+  pupil_type?: PupilType;
 };
 
 type SimulateResult = {
@@ -76,8 +79,8 @@ export default class SCAXEngine {
   private lastSturmGapAnalysis: unknown = null;
   private lastAffineAnalysis: unknown = null;
   private pupilDiameterMm: number | null;
-  private pupilPlaneZMm: number | null;
   private retinaZMm: number | null;
+  private hasPupilStop: boolean;
   private eyePower: SCAxPower;
   private lensConfigs: LensConfig[];
   private lensPowers: SCAxPower[];
@@ -88,14 +91,14 @@ export default class SCAXEngine {
       eye = { s: 0, c: 0, ax: 0 },
       lens = [],
       light_source = { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
-      pupilDiameterMm = null,
-      pupilPlaneZMm = null,
+      pupil_type = "neutral",
     } = props;
     this.eyeModel = eyeModel;
+    const normalizedEyeSphere = Number(eye?.s ?? 0) + (eyeModel === "gullstrand" ? -1 : 0);
     // eye 입력은 auto refractor(굴절오차) 기준이므로,
     // 광학면에 적용할 때는 보정렌즈 파워 관점으로 부호를 반전합니다.
     this.eyePower = {
-      s: -Number(eye?.s ?? 0),
+      s: -normalizedEyeSphere,
       c: -Number(eye?.c ?? 0),
       ax: Number(eye?.ax ?? 0),
     };
@@ -118,6 +121,7 @@ export default class SCAXEngine {
       c: Number(spec?.c ?? 0),
       ax: Number(spec?.ax ?? 0),
     }));
+    this.pupilDiameterMm = Number(PUPIL_SIZE[pupil_type]);
     this.eyeModelParameter = eyeModel === "gullstrand" ? new GullstrandParameter() : new NavarroParameter();
     const eyeSt = new STSurface({
       type: "compound",
@@ -133,6 +137,24 @@ export default class SCAXEngine {
       n_after: FRAUNHOFER_REFRACTIVE_INDICES.aqueous.d,
     });
     this.surfaces = [eyeSt, ...this.eyeModelParameter.createSurface()];
+    this.hasPupilStop = false;
+    if (Number.isFinite(this.pupilDiameterMm) && (this.pupilDiameterMm as number) > 0) {
+      const pupilStop = new ApertureStopSurface({
+        type: "aperture_stop",
+        name: "pupil_stop",
+        shape: "circle",
+        radius: (this.pupilDiameterMm as number) / 2,
+        // eye_st(눈 굴절력 surface)의 첫 굴절면(back vertex) 바로 앞에서 차단/통과를 판정합니다.
+        position: {
+          x: 0,
+          y: 0,
+          z: -EYE_ST_SURFACE_OFFSET_MM - (2 * RAY_SURFACE_ESCAPE_MM),
+        },
+        tilt: { x: 0, y: 0 },
+      });
+      this.surfaces = [pupilStop, ...this.surfaces];
+      this.hasPupilStop = true;
+    }
     this.lens = this.lensConfigs.map((spec, index) => new STSurface({
       type: "compound",
       name: `lens_st_${index + 1}`,
@@ -154,8 +176,6 @@ export default class SCAXEngine {
     this.light_source = light_source.type === "radial"
       ? new RadialLightSource(light_source as RadialLightSourceProps)
       : new GridLightSource(light_source as GridLightSourceProps);
-    this.pupilDiameterMm = this.toFiniteNumberOrNull(pupilDiameterMm);
-    this.pupilPlaneZMm = this.toFiniteNumberOrNull(pupilPlaneZMm);
     this.retinaZMm = this.findRetinaZFromSurfaces();
   }
 
@@ -178,7 +198,9 @@ export default class SCAXEngine {
   public rayTracing(): Ray[] {
     // 안경 렌즈(lens)와 안구 표면(eye model)을 하나의 광학 경로로 합쳐 순차 추적합니다.
     const surfaces = [...this.lens, ...this.surfaces].sort((a, b) => this.surfaceOrderZ(a) - this.surfaceOrderZ(b));
-    const sourceRays = this.light_source.emitRays().filter((ray) => this.isRayInsidePupil(ray));
+    const sourceRays = this.hasPupilStop
+      ? this.light_source.emitRays()
+      : this.light_source.emitRays().filter((ray) => this.isRayInsidePupil(ray));
     const traced: Ray[] = [];
 
     for (const sourceRay of sourceRays) {
@@ -304,11 +326,6 @@ export default class SCAXEngine {
     return Array.isArray(points) ? points : [];
   }
 
-  private toFiniteNumberOrNull(value: unknown) {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : null;
-  }
-
   private findRetinaZFromSurfaces() {
     const retinaSurface = this.surfaces.find((surface) => this.readSurfaceName(surface) === "retina");
     const retinaZ = Number(this.readSurfacePosition(retinaSurface as Surface)?.z);
@@ -321,16 +338,8 @@ export default class SCAXEngine {
     const radius = (diameter as number) / 2;
     const points = this.getRayPoints(ray);
     const origin = points[0];
-    const direction = ray.getDirection();
-    if (!origin || !direction) return false;
-    const planeZ = this.pupilPlaneZMm;
-    if (!Number.isFinite(planeZ)) return Math.hypot(origin.x, origin.y) <= radius + 1e-6;
-    if (Math.abs(direction.z) < 1e-9) return Math.hypot(origin.x, origin.y) <= radius + 1e-6;
-    const t = ((planeZ as number) - origin.z) / direction.z;
-    if (!Number.isFinite(t) || t < 0) return false;
-    const x = origin.x + direction.x * t;
-    const y = origin.y + direction.y * t;
-    return Math.hypot(x, y) <= radius + 1e-6;
+    if (!origin) return false;
+    return Math.hypot(origin.x, origin.y) <= radius + 1e-6;
   }
 
   private powerVectorFromCylinder(cylinderD: number, axisDeg: number) {

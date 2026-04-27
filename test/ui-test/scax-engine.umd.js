@@ -6248,6 +6248,449 @@
     const _y = /*@__PURE__*/ new Vector3();
     const _z = /*@__PURE__*/ new Vector3();
 
+    const _matrix$2 = /*@__PURE__*/ new Matrix4();
+    const _quaternion$4 = /*@__PURE__*/ new Quaternion();
+
+    /**
+     * A class representing Euler angles.
+     *
+     * Euler angles describe a rotational transformation by rotating an object on
+     * its various axes in specified amounts per axis, and a specified axis
+     * order.
+     *
+     * Iterating through an instance will yield its components (x, y, z,
+     * order) in the corresponding order.
+     *
+     * ```js
+     * const a = new THREE.Euler( 0, 1, 1.57, 'XYZ' );
+     * const b = new THREE.Vector3( 1, 0, 1 );
+     * b.applyEuler(a);
+     * ```
+     */
+    class Euler {
+
+    	/**
+    	 * Constructs a new euler instance.
+    	 *
+    	 * @param {number} [x=0] - The angle of the x axis in radians.
+    	 * @param {number} [y=0] - The angle of the y axis in radians.
+    	 * @param {number} [z=0] - The angle of the z axis in radians.
+    	 * @param {string} [order=Euler.DEFAULT_ORDER] - A string representing the order that the rotations are applied.
+    	 */
+    	constructor( x = 0, y = 0, z = 0, order = Euler.DEFAULT_ORDER ) {
+
+    		/**
+    		 * This flag can be used for type testing.
+    		 *
+    		 * @type {boolean}
+    		 * @readonly
+    		 * @default true
+    		 */
+    		this.isEuler = true;
+
+    		this._x = x;
+    		this._y = y;
+    		this._z = z;
+    		this._order = order;
+
+    	}
+
+    	/**
+    	 * The angle of the x axis in radians.
+    	 *
+    	 * @type {number}
+    	 * @default 0
+    	 */
+    	get x() {
+
+    		return this._x;
+
+    	}
+
+    	set x( value ) {
+
+    		this._x = value;
+    		this._onChangeCallback();
+
+    	}
+
+    	/**
+    	 * The angle of the y axis in radians.
+    	 *
+    	 * @type {number}
+    	 * @default 0
+    	 */
+    	get y() {
+
+    		return this._y;
+
+    	}
+
+    	set y( value ) {
+
+    		this._y = value;
+    		this._onChangeCallback();
+
+    	}
+
+    	/**
+    	 * The angle of the z axis in radians.
+    	 *
+    	 * @type {number}
+    	 * @default 0
+    	 */
+    	get z() {
+
+    		return this._z;
+
+    	}
+
+    	set z( value ) {
+
+    		this._z = value;
+    		this._onChangeCallback();
+
+    	}
+
+    	/**
+    	 * A string representing the order that the rotations are applied.
+    	 *
+    	 * @type {string}
+    	 * @default 'XYZ'
+    	 */
+    	get order() {
+
+    		return this._order;
+
+    	}
+
+    	set order( value ) {
+
+    		this._order = value;
+    		this._onChangeCallback();
+
+    	}
+
+    	/**
+    	 * Sets the Euler components.
+    	 *
+    	 * @param {number} x - The angle of the x axis in radians.
+    	 * @param {number} y - The angle of the y axis in radians.
+    	 * @param {number} z - The angle of the z axis in radians.
+    	 * @param {string} [order] - A string representing the order that the rotations are applied.
+    	 * @return {Euler} A reference to this Euler instance.
+    	 */
+    	set( x, y, z, order = this._order ) {
+
+    		this._x = x;
+    		this._y = y;
+    		this._z = z;
+    		this._order = order;
+
+    		this._onChangeCallback();
+
+    		return this;
+
+    	}
+
+    	/**
+    	 * Returns a new Euler instance with copied values from this instance.
+    	 *
+    	 * @return {Euler} A clone of this instance.
+    	 */
+    	clone() {
+
+    		return new this.constructor( this._x, this._y, this._z, this._order );
+
+    	}
+
+    	/**
+    	 * Copies the values of the given Euler instance to this instance.
+    	 *
+    	 * @param {Euler} euler - The Euler instance to copy.
+    	 * @return {Euler} A reference to this Euler instance.
+    	 */
+    	copy( euler ) {
+
+    		this._x = euler._x;
+    		this._y = euler._y;
+    		this._z = euler._z;
+    		this._order = euler._order;
+
+    		this._onChangeCallback();
+
+    		return this;
+
+    	}
+
+    	/**
+    	 * Sets the angles of this Euler instance from a pure rotation matrix.
+    	 *
+    	 * @param {Matrix4} m - A 4x4 matrix of which the upper 3x3 of matrix is a pure rotation matrix (i.e. unscaled).
+    	 * @param {string} [order] - A string representing the order that the rotations are applied.
+    	 * @param {boolean} [update=true] - Whether the internal `onChange` callback should be executed or not.
+    	 * @return {Euler} A reference to this Euler instance.
+    	 */
+    	setFromRotationMatrix( m, order = this._order, update = true ) {
+
+    		const te = m.elements;
+    		const m11 = te[ 0 ], m12 = te[ 4 ], m13 = te[ 8 ];
+    		const m21 = te[ 1 ], m22 = te[ 5 ], m23 = te[ 9 ];
+    		const m31 = te[ 2 ], m32 = te[ 6 ], m33 = te[ 10 ];
+
+    		switch ( order ) {
+
+    			case 'XYZ':
+
+    				this._y = Math.asin( clamp( m13, -1, 1 ) );
+
+    				if ( Math.abs( m13 ) < 0.9999999 ) {
+
+    					this._x = Math.atan2( - m23, m33 );
+    					this._z = Math.atan2( - m12, m11 );
+
+    				} else {
+
+    					this._x = Math.atan2( m32, m22 );
+    					this._z = 0;
+
+    				}
+
+    				break;
+
+    			case 'YXZ':
+
+    				this._x = Math.asin( - clamp( m23, -1, 1 ) );
+
+    				if ( Math.abs( m23 ) < 0.9999999 ) {
+
+    					this._y = Math.atan2( m13, m33 );
+    					this._z = Math.atan2( m21, m22 );
+
+    				} else {
+
+    					this._y = Math.atan2( - m31, m11 );
+    					this._z = 0;
+
+    				}
+
+    				break;
+
+    			case 'ZXY':
+
+    				this._x = Math.asin( clamp( m32, -1, 1 ) );
+
+    				if ( Math.abs( m32 ) < 0.9999999 ) {
+
+    					this._y = Math.atan2( - m31, m33 );
+    					this._z = Math.atan2( - m12, m22 );
+
+    				} else {
+
+    					this._y = 0;
+    					this._z = Math.atan2( m21, m11 );
+
+    				}
+
+    				break;
+
+    			case 'ZYX':
+
+    				this._y = Math.asin( - clamp( m31, -1, 1 ) );
+
+    				if ( Math.abs( m31 ) < 0.9999999 ) {
+
+    					this._x = Math.atan2( m32, m33 );
+    					this._z = Math.atan2( m21, m11 );
+
+    				} else {
+
+    					this._x = 0;
+    					this._z = Math.atan2( - m12, m22 );
+
+    				}
+
+    				break;
+
+    			case 'YZX':
+
+    				this._z = Math.asin( clamp( m21, -1, 1 ) );
+
+    				if ( Math.abs( m21 ) < 0.9999999 ) {
+
+    					this._x = Math.atan2( - m23, m22 );
+    					this._y = Math.atan2( - m31, m11 );
+
+    				} else {
+
+    					this._x = 0;
+    					this._y = Math.atan2( m13, m33 );
+
+    				}
+
+    				break;
+
+    			case 'XZY':
+
+    				this._z = Math.asin( - clamp( m12, -1, 1 ) );
+
+    				if ( Math.abs( m12 ) < 0.9999999 ) {
+
+    					this._x = Math.atan2( m32, m22 );
+    					this._y = Math.atan2( m13, m11 );
+
+    				} else {
+
+    					this._x = Math.atan2( - m23, m33 );
+    					this._y = 0;
+
+    				}
+
+    				break;
+
+    			default:
+
+    				warn( 'Euler: .setFromRotationMatrix() encountered an unknown order: ' + order );
+
+    		}
+
+    		this._order = order;
+
+    		if ( update === true ) this._onChangeCallback();
+
+    		return this;
+
+    	}
+
+    	/**
+    	 * Sets the angles of this Euler instance from a normalized quaternion.
+    	 *
+    	 * @param {Quaternion} q - A normalized Quaternion.
+    	 * @param {string} [order] - A string representing the order that the rotations are applied.
+    	 * @param {boolean} [update=true] - Whether the internal `onChange` callback should be executed or not.
+    	 * @return {Euler} A reference to this Euler instance.
+    	 */
+    	setFromQuaternion( q, order, update ) {
+
+    		_matrix$2.makeRotationFromQuaternion( q );
+
+    		return this.setFromRotationMatrix( _matrix$2, order, update );
+
+    	}
+
+    	/**
+    	 * Sets the angles of this Euler instance from the given vector.
+    	 *
+    	 * @param {Vector3} v - The vector.
+    	 * @param {string} [order] - A string representing the order that the rotations are applied.
+    	 * @return {Euler} A reference to this Euler instance.
+    	 */
+    	setFromVector3( v, order = this._order ) {
+
+    		return this.set( v.x, v.y, v.z, order );
+
+    	}
+
+    	/**
+    	 * Resets the euler angle with a new order by creating a quaternion from this
+    	 * euler angle and then setting this euler angle with the quaternion and the
+    	 * new order.
+    	 *
+    	 * Warning: This discards revolution information.
+    	 *
+    	 * @param {string} [newOrder] - A string representing the new order that the rotations are applied.
+    	 * @return {Euler} A reference to this Euler instance.
+    	 */
+    	reorder( newOrder ) {
+
+    		_quaternion$4.setFromEuler( this );
+
+    		return this.setFromQuaternion( _quaternion$4, newOrder );
+
+    	}
+
+    	/**
+    	 * Returns `true` if this Euler instance is equal with the given one.
+    	 *
+    	 * @param {Euler} euler - The Euler instance to test for equality.
+    	 * @return {boolean} Whether this Euler instance is equal with the given one.
+    	 */
+    	equals( euler ) {
+
+    		return ( euler._x === this._x ) && ( euler._y === this._y ) && ( euler._z === this._z ) && ( euler._order === this._order );
+
+    	}
+
+    	/**
+    	 * Sets this Euler instance's components to values from the given array. The first three
+    	 * entries of the array are assign to the x,y and z components. An optional fourth entry
+    	 * defines the Euler order.
+    	 *
+    	 * @param {Array<number,number,number,?string>} array - An array holding the Euler component values.
+    	 * @return {Euler} A reference to this Euler instance.
+    	 */
+    	fromArray( array ) {
+
+    		this._x = array[ 0 ];
+    		this._y = array[ 1 ];
+    		this._z = array[ 2 ];
+    		if ( array[ 3 ] !== undefined ) this._order = array[ 3 ];
+
+    		this._onChangeCallback();
+
+    		return this;
+
+    	}
+
+    	/**
+    	 * Writes the components of this Euler instance to the given array. If no array is provided,
+    	 * the method returns a new instance.
+    	 *
+    	 * @param {Array<number,number,number,string>} [array=[]] - The target array holding the Euler components.
+    	 * @param {number} [offset=0] - Index of the first element in the array.
+    	 * @return {Array<number,number,number,string>} The Euler components.
+    	 */
+    	toArray( array = [], offset = 0 ) {
+
+    		array[ offset ] = this._x;
+    		array[ offset + 1 ] = this._y;
+    		array[ offset + 2 ] = this._z;
+    		array[ offset + 3 ] = this._order;
+
+    		return array;
+
+    	}
+
+    	_onChange( callback ) {
+
+    		this._onChangeCallback = callback;
+
+    		return this;
+
+    	}
+
+    	_onChangeCallback() {}
+
+    	*[ Symbol.iterator ]() {
+
+    		yield this._x;
+    		yield this._y;
+    		yield this._z;
+    		yield this._order;
+
+    	}
+
+    }
+
+    /**
+     * The default Euler angle order.
+     *
+     * @static
+     * @type {string}
+     * @default 'XYZ'
+     */
+    Euler.DEFAULT_ORDER = 'XYZ';
+
     /**
      * Represents a 2x2 matrix.
      *
@@ -6435,6 +6878,17 @@
             d: 1.376},
         aqueous: {
             d: 1.336}};
+    /**
+     * 동공 크기
+     */
+    const PUPIL_SIZE = {
+        /** 축동 — 동공 수축 */
+        constricted: 2.5,
+        /** 일반 */
+        neutral: 4,
+        /** 산동 — 동공 확대 */
+        dilated: 6,
+    };
     /**
      * 망막 뒤 광선 연장 거리
      */
@@ -6693,348 +7147,6 @@
         }
     }
 
-    class SphericalSurface extends Surface {
-        constructor(props) {
-            super({ type: "spherical", name: props.name, position: props.position, tilt: props.tilt });
-            this.r = 0;
-            this.n_before = 0;
-            this.n_after = 0;
-            const { r, n_before = 1.0, n_after = 1.0 } = props;
-            this.r = r;
-            this.n_before = n_before;
-            this.n_after = n_after;
-        }
-        /**
-         * 반경이 너무 크거나 비정상 값이면 평면으로 간주합니다.
-         * (legacy 코드의 planar fallback 동작을 그대로 반영)
-         */
-        isPlanar() {
-            return !Number.isFinite(this.r) || Math.abs(this.r) > 1e12;
-        }
-        /**
-         * 구면의 중심점입니다.
-         * 이 프로젝트의 구면은 +Z 축을 기준으로 배치되며,
-         * 중심은 꼭지점(position)에서 반경만큼 Z 방향으로 이동한 위치입니다.
-         */
-        sphereCenter() {
-            return new Vector3(this.position.x, this.position.y, this.position.z + this.r);
-        }
-        /**
-         * 굴절 계산에 사용할 "2번째 매질 방향" 법선을 계산합니다.
-         * - 평면: +Z 법선 사용
-         * - 구면: 반경 부호에 따라 중심-입사점 벡터 방향을 맞춰 사용
-         */
-        normalIntoSecondMedium(hitPoint) {
-            if (this.isPlanar()) {
-                return new Vector3(0, 0, 1);
-            }
-            const center = this.sphereCenter();
-            return this.r < 0
-                ? hitPoint.clone().sub(center).normalize()
-                : center.clone().sub(hitPoint).normalize();
-        }
-        /**
-         * 주어진 XY에서 구면의 z 위치를 계산합니다.
-         * - 반경이 매우 큰 경우(평면)에는 평면 z를 반환합니다.
-         * - 구면 정의역 밖이면 null을 반환합니다.
-         */
-        surfaceZAtXY(x, y) {
-            if (this.isPlanar())
-                return this.position.z;
-            const rhoSq = x * x + y * y;
-            const rr = this.r * this.r;
-            if (rhoSq > rr)
-                return null;
-            const root = Math.sqrt(Math.max(0, rr - rhoSq));
-            const sag = this.r - Math.sign(this.r || 1) * root;
-            return this.position.z + sag;
-        }
-        incident(ray) {
-            // 현재 광선의 마지막 점에서, 진행 방향으로 표면과 만나는 첫 교점을 찾습니다.
-            const origin = ray.endPoint();
-            const direction = ray.getDirection().normalize();
-            const minT = 1e-6; // 자기 자신과의 수치적 재충돌 방지
-            const onSurfaceTol = TORIC_ON_SURFACE_TOL_MM;
-            // ST compound(back->front) 경계에서 escape step으로 origin이 front를 미세하게
-            // 앞지르는 경우를 허용하기 위해 tol을 조금 크게 둡니다.
-            const coincidentTol = Math.max(TORIC_COINCIDENT_SURFACE_TOL_MM, 5e-2);
-            // 1) 평면 fallback: z = this.position.z 면과의 교점
-            if (this.isPlanar()) {
-                const dz = direction.z;
-                if (!Number.isFinite(dz) || Math.abs(dz) < EPSILON)
-                    return null;
-                const f0 = origin.z - this.position.z;
-                if (Math.abs(f0) <= onSurfaceTol) {
-                    this.incidentRays.push(ray.clone());
-                    return origin.clone();
-                }
-                if (f0 > 0
-                    && f0 <= coincidentTol
-                    && direction.z > 0
-                    && this.position.z <= origin.z + coincidentTol) {
-                    this.incidentRays.push(ray.clone());
-                    return origin.clone();
-                }
-                const t = (this.position.z - origin.z) / dz;
-                if (!Number.isFinite(t) || t < minT)
-                    return null;
-                const hitPoint = origin.clone().addScaledVector(direction, t);
-                this.incidentRays.push(ray.clone());
-                return hitPoint;
-            }
-            // 2) 구면: |O + tD - C|^2 = r^2 를 풀어 가장 가까운 양의 t 선택
-            const zAtOriginXY = this.surfaceZAtXY(origin.x, origin.y);
-            if (Number.isFinite(zAtOriginXY)) {
-                const f0 = origin.z - zAtOriginXY;
-                if (Math.abs(f0) <= onSurfaceTol) {
-                    this.incidentRays.push(ray.clone());
-                    return origin.clone();
-                }
-                if (f0 > 0
-                    && f0 <= coincidentTol
-                    && direction.z > 0
-                    && this.position.z <= origin.z + coincidentTol) {
-                    this.incidentRays.push(ray.clone());
-                    return origin.clone();
-                }
-            }
-            const center = this.sphereCenter();
-            const oc = origin.clone().sub(center);
-            const b = 2 * direction.dot(oc);
-            const c = oc.lengthSq() - this.r * this.r;
-            const rawDiscriminant = b * b - 4 * c;
-            if (rawDiscriminant < -1e-10)
-                return null;
-            const discriminant = Math.max(0, rawDiscriminant);
-            const root = Math.sqrt(discriminant);
-            const t0 = (-b - root) / 2;
-            const t1 = (-b + root) / 2;
-            const candidates = [t0, t1]
-                .filter((t) => Number.isFinite(t) && t > minT)
-                .sort((a, b2) => a - b2);
-            if (!candidates.length)
-                return null;
-            const hitPoint = origin.clone().addScaledVector(direction, candidates[0]);
-            this.incidentRays.push(ray.clone());
-            return hitPoint;
-        }
-        refract(ray) {
-            const hitPoint = this.incident(ray);
-            if (!hitPoint)
-                return null;
-            // 스넬의 법칙 벡터형 구현
-            const incidentDir = ray.getDirection().normalize();
-            const normal = this.normalIntoSecondMedium(hitPoint);
-            // 법선과 입사광의 방향이 반대면 법선을 뒤집어 "2번째 매질 방향"으로 정렬
-            if (normal.dot(incidentDir) < 0) {
-                normal.multiplyScalar(-1);
-            }
-            const cos1 = Math.max(-1, Math.min(1, normal.dot(incidentDir)));
-            const sin1Sq = Math.max(0, 1 - cos1 * cos1);
-            const sin2 = (this.n_before / this.n_after) * Math.sqrt(sin1Sq);
-            // 전반사(TIR)
-            if (sin2 > 1 + 1e-10)
-                return null;
-            const cos2 = Math.sqrt(Math.max(0, 1 - sin2 * sin2));
-            const tangent = incidentDir.clone().sub(normal.clone().multiplyScalar(cos1));
-            const outDirection = tangent.lengthSq() < 1e-12
-                ? incidentDir.clone()
-                : normal.clone()
-                    .multiplyScalar(cos2)
-                    .add(tangent.normalize().multiplyScalar(sin2))
-                    .normalize();
-            // 원본 광선을 복제해 굴절된 새 광선으로 이어붙입니다.
-            const refractedRay = ray.clone();
-            refractedRay.appendPoint(hitPoint);
-            refractedRay.continueFrom(hitPoint.clone().addScaledVector(outDirection, RAY_SURFACE_ESCAPE_MM), outDirection);
-            this.refractedRays.push(refractedRay.clone());
-            return refractedRay;
-        }
-    }
-
-    /**
-     * 곡면 표현만 하고 굴절 효과는 없습니다.
-     * 망막 위치를 표현하는 데 사용됩니다.
-     */
-    class SphericalImageSurface extends Surface {
-        constructor(props) {
-            super({ type: "spherical-image", name: props.name, position: props.position, tilt: props.tilt });
-            this.radius = 0;
-            this.retina_extra_after = true;
-            this.hitPoints = [];
-            const { radius, retina_extra_after = true } = props;
-            this.radius = radius;
-            this.retina_extra_after = retina_extra_after;
-        }
-        /**
-         * 반경 값이 비정상이면 평면(z = position.z)으로 처리합니다.
-         */
-        isPlanar() {
-            return !Number.isFinite(this.radius) || Math.abs(this.radius) > 1e12;
-        }
-        /**
-         * 구면 중심: 꼭지점(position)에서 반경만큼 z축 이동한 점
-         */
-        sphereCenter() {
-            return new Vector3(this.position.x, this.position.y, this.position.z + this.radius);
-        }
-        getHitPoints() {
-            return this.hitPoints.map((point) => point.clone());
-        }
-        incident(ray) {
-            // 새 입사 계산을 시작할 때 이전 교점 기록은 초기화합니다.
-            this.hitPoints = [];
-            const origin = ray.endPoint();
-            const direction = ray.getDirection().normalize();
-            const minT = 1e-6;
-            // 1) 평면 fallback
-            if (this.isPlanar()) {
-                const dz = direction.z;
-                if (!Number.isFinite(dz) || Math.abs(dz) < EPSILON)
-                    return null;
-                const t = (this.position.z - origin.z) / dz;
-                if (!Number.isFinite(t) || t < minT)
-                    return null;
-                const hitPoint = origin.clone().addScaledVector(direction, t);
-                this.incidentRays.push(ray.clone());
-                this.hitPoints.push(hitPoint.clone());
-                return hitPoint;
-            }
-            // 2) 구면 교점 (가장 가까운 양의 t)
-            const center = this.sphereCenter();
-            const oc = origin.clone().sub(center);
-            const b = 2 * direction.dot(oc);
-            const c = oc.lengthSq() - this.radius * this.radius;
-            const discriminant = b * b - 4 * c;
-            if (discriminant < 0)
-                return null;
-            const root = Math.sqrt(discriminant);
-            const t0 = (-b - root) / 2;
-            const t1 = (-b + root) / 2;
-            const candidates = [t0, t1]
-                .filter((t) => Number.isFinite(t) && t > minT)
-                .sort((a, b2) => a - b2);
-            if (!candidates.length)
-                return null;
-            const hitPoint = origin.clone().addScaledVector(direction, candidates[0]);
-            this.incidentRays.push(ray.clone());
-            this.hitPoints.push(hitPoint.clone());
-            return hitPoint;
-        }
-        refract(ray) {
-            const hitPoint = this.incident(ray);
-            if (!hitPoint)
-                return null;
-            // 망막면은 굴절하지 않고, 입사 방향을 그대로 유지합니다.
-            const outDirection = ray.getDirection().normalize();
-            const tracedRay = ray.clone();
-            tracedRay.appendPoint(hitPoint);
-            // 망막 뒤 연장을 비활성화하면 교점에서 광선을 종료합니다.
-            if (!this.retina_extra_after) {
-                this.refractedRays.push(tracedRay.clone());
-                return tracedRay;
-            }
-            tracedRay.continueFrom(hitPoint.clone().addScaledVector(outDirection, RAY_SURFACE_ESCAPE_MM), outDirection);
-            tracedRay.appendPoint(hitPoint.clone().addScaledVector(outDirection, RETINA_EXTRA_AFTER_MM));
-            this.refractedRays.push(tracedRay.clone());
-            return tracedRay;
-        }
-    }
-
-    class GullstrandParameter {
-        constructor() { }
-        createSurface() {
-            return GullstrandParameter.parameter.surfaces.map((surface) => {
-                if (surface.type === "spherical") {
-                    if (surface.n_before == null || surface.n_after == null) {
-                        throw new Error(`Missing refractive indices for surface: ${surface.name}`);
-                    }
-                    return new SphericalSurface({
-                        type: "spherical",
-                        name: surface.name,
-                        r: surface.radius,
-                        position: { x: 0, y: 0, z: surface.z },
-                        tilt: { x: 0, y: 0 },
-                        n_before: surface.n_before,
-                        n_after: surface.n_after,
-                    });
-                }
-                if (surface.type === "spherical-image") {
-                    return new SphericalImageSurface({
-                        type: "spherical-image",
-                        name: surface.name,
-                        radius: surface.radius,
-                        position: { x: 0, y: 0, z: surface.z },
-                        tilt: { x: 0, y: 0 },
-                        retina_extra_after: true,
-                    });
-                }
-                throw new Error(`Unsupported surface type in Gullstrand model: ${surface.type}`);
-            });
-        }
-    }
-    GullstrandParameter.parameter = {
-        unit: "mm",
-        axis: "optical_axis_z",
-        origin: "cornea_anterior_vertex",
-        surfaces: [
-            {
-                type: "spherical",
-                name: "cornea_anterior",
-                z: 0.0,
-                radius: 7.7,
-                n_before: 1.0,
-                n_after: 1.376,
-            },
-            {
-                type: "spherical",
-                name: "cornea_posterior",
-                z: 0.5,
-                radius: 6.8,
-                n_before: 1.376,
-                n_after: 1.336,
-            },
-            {
-                type: "spherical",
-                name: "lens_anterior",
-                z: 3.6,
-                radius: 10.0,
-                n_before: 1.336,
-                n_after: 1.386,
-            },
-            {
-                type: "spherical",
-                name: "lens_nucleus_anterior",
-                z: 4.146,
-                radius: 7.911,
-                n_before: 1.386,
-                n_after: 1.406,
-            },
-            {
-                type: "spherical",
-                name: "lens_nucleus_posterior",
-                z: 6.565,
-                radius: -5.76,
-                n_before: 1.406,
-                n_after: 1.386,
-            },
-            {
-                type: "spherical",
-                name: "lens_posterior",
-                z: 7.2,
-                radius: -6,
-                n_before: 1.386,
-                n_after: 1.336,
-            },
-            {
-                type: "spherical-image",
-                name: "retina",
-                radius: -12, // mm (대략적인 망막 곡률)
-                z: 24.0 // 중심 위치
-            }
-        ],
-    };
-
     class AsphericalSurface extends Surface {
         constructor(props) {
             super({ type: "aspherical", name: props.name, position: props.position, tilt: props.tilt });
@@ -7271,15 +7383,272 @@
     AsphericalSurface.BRACKET_SCAN_STEPS = 96;
     AsphericalSurface.MAX_BRACKET_T_MM = 80;
 
-    class NavarroParameter {
+    /**
+     * 곡면 표현만 하고 굴절 효과는 없습니다.
+     * 망막 위치를 표현하는 데 사용됩니다.
+     */
+    class SphericalImageSurface extends Surface {
+        constructor(props) {
+            super({ type: "spherical-image", name: props.name, position: props.position, tilt: props.tilt });
+            this.radius = 0;
+            this.retina_extra_after = true;
+            this.hitPoints = [];
+            const { radius, retina_extra_after = true } = props;
+            this.radius = radius;
+            this.retina_extra_after = retina_extra_after;
+        }
+        /**
+         * 반경 값이 비정상이면 평면(z = position.z)으로 처리합니다.
+         */
+        isPlanar() {
+            return !Number.isFinite(this.radius) || Math.abs(this.radius) > 1e12;
+        }
+        /**
+         * 구면 중심: 꼭지점(position)에서 반경만큼 z축 이동한 점
+         */
+        sphereCenter() {
+            return new Vector3(this.position.x, this.position.y, this.position.z + this.radius);
+        }
+        getHitPoints() {
+            return this.hitPoints.map((point) => point.clone());
+        }
+        incident(ray) {
+            // 새 입사 계산을 시작할 때 이전 교점 기록은 초기화합니다.
+            this.hitPoints = [];
+            const origin = ray.endPoint();
+            const direction = ray.getDirection().normalize();
+            const minT = 1e-6;
+            // 1) 평면 fallback
+            if (this.isPlanar()) {
+                const dz = direction.z;
+                if (!Number.isFinite(dz) || Math.abs(dz) < EPSILON)
+                    return null;
+                const t = (this.position.z - origin.z) / dz;
+                if (!Number.isFinite(t) || t < minT)
+                    return null;
+                const hitPoint = origin.clone().addScaledVector(direction, t);
+                this.incidentRays.push(ray.clone());
+                this.hitPoints.push(hitPoint.clone());
+                return hitPoint;
+            }
+            // 2) 구면 교점 (가장 가까운 양의 t)
+            const center = this.sphereCenter();
+            const oc = origin.clone().sub(center);
+            const b = 2 * direction.dot(oc);
+            const c = oc.lengthSq() - this.radius * this.radius;
+            const discriminant = b * b - 4 * c;
+            if (discriminant < 0)
+                return null;
+            const root = Math.sqrt(discriminant);
+            const t0 = (-b - root) / 2;
+            const t1 = (-b + root) / 2;
+            const candidates = [t0, t1]
+                .filter((t) => Number.isFinite(t) && t > minT)
+                .sort((a, b2) => a - b2);
+            if (!candidates.length)
+                return null;
+            const hitPoint = origin.clone().addScaledVector(direction, candidates[0]);
+            this.incidentRays.push(ray.clone());
+            this.hitPoints.push(hitPoint.clone());
+            return hitPoint;
+        }
+        refract(ray) {
+            const hitPoint = this.incident(ray);
+            if (!hitPoint)
+                return null;
+            // 망막면은 굴절하지 않고, 입사 방향을 그대로 유지합니다.
+            const outDirection = ray.getDirection().normalize();
+            const tracedRay = ray.clone();
+            tracedRay.appendPoint(hitPoint);
+            // 망막 뒤 연장을 비활성화하면 교점에서 광선을 종료합니다.
+            if (!this.retina_extra_after) {
+                this.refractedRays.push(tracedRay.clone());
+                return tracedRay;
+            }
+            tracedRay.continueFrom(hitPoint.clone().addScaledVector(outDirection, RAY_SURFACE_ESCAPE_MM), outDirection);
+            tracedRay.appendPoint(hitPoint.clone().addScaledVector(outDirection, RETINA_EXTRA_AFTER_MM));
+            this.refractedRays.push(tracedRay.clone());
+            return tracedRay;
+        }
+    }
+
+    class SphericalSurface extends Surface {
+        constructor(props) {
+            super({ type: "spherical", name: props.name, position: props.position, tilt: props.tilt });
+            this.r = 0;
+            this.n_before = 0;
+            this.n_after = 0;
+            const { r, n_before = 1.0, n_after = 1.0 } = props;
+            this.r = r;
+            this.n_before = n_before;
+            this.n_after = n_after;
+        }
+        /**
+         * 반경이 너무 크거나 비정상 값이면 평면으로 간주합니다.
+         * (legacy 코드의 planar fallback 동작을 그대로 반영)
+         */
+        isPlanar() {
+            return !Number.isFinite(this.r) || Math.abs(this.r) > 1e12;
+        }
+        /**
+         * 구면의 중심점입니다.
+         * 이 프로젝트의 구면은 +Z 축을 기준으로 배치되며,
+         * 중심은 꼭지점(position)에서 반경만큼 Z 방향으로 이동한 위치입니다.
+         */
+        sphereCenter() {
+            return new Vector3(this.position.x, this.position.y, this.position.z + this.r);
+        }
+        /**
+         * 굴절 계산에 사용할 "2번째 매질 방향" 법선을 계산합니다.
+         * - 평면: +Z 법선 사용
+         * - 구면: 반경 부호에 따라 중심-입사점 벡터 방향을 맞춰 사용
+         */
+        normalIntoSecondMedium(hitPoint) {
+            if (this.isPlanar()) {
+                return new Vector3(0, 0, 1);
+            }
+            const center = this.sphereCenter();
+            return this.r < 0
+                ? hitPoint.clone().sub(center).normalize()
+                : center.clone().sub(hitPoint).normalize();
+        }
+        /**
+         * 주어진 XY에서 구면의 z 위치를 계산합니다.
+         * - 반경이 매우 큰 경우(평면)에는 평면 z를 반환합니다.
+         * - 구면 정의역 밖이면 null을 반환합니다.
+         */
+        surfaceZAtXY(x, y) {
+            if (this.isPlanar())
+                return this.position.z;
+            const rhoSq = x * x + y * y;
+            const rr = this.r * this.r;
+            if (rhoSq > rr)
+                return null;
+            const root = Math.sqrt(Math.max(0, rr - rhoSq));
+            const sag = this.r - Math.sign(this.r || 1) * root;
+            return this.position.z + sag;
+        }
+        incident(ray) {
+            // 현재 광선의 마지막 점에서, 진행 방향으로 표면과 만나는 첫 교점을 찾습니다.
+            const origin = ray.endPoint();
+            const direction = ray.getDirection().normalize();
+            const minT = 1e-6; // 자기 자신과의 수치적 재충돌 방지
+            const onSurfaceTol = TORIC_ON_SURFACE_TOL_MM;
+            // ST compound(back->front) 경계에서 escape step으로 origin이 front를 미세하게
+            // 앞지르는 경우를 허용하기 위해 tol을 조금 크게 둡니다.
+            const coincidentTol = Math.max(TORIC_COINCIDENT_SURFACE_TOL_MM, 5e-2);
+            // 1) 평면 fallback: z = this.position.z 면과의 교점
+            if (this.isPlanar()) {
+                const dz = direction.z;
+                if (!Number.isFinite(dz) || Math.abs(dz) < EPSILON)
+                    return null;
+                const f0 = origin.z - this.position.z;
+                if (Math.abs(f0) <= onSurfaceTol) {
+                    this.incidentRays.push(ray.clone());
+                    return origin.clone();
+                }
+                if (f0 > 0
+                    && f0 <= coincidentTol
+                    && direction.z > 0
+                    && this.position.z <= origin.z + coincidentTol) {
+                    this.incidentRays.push(ray.clone());
+                    return origin.clone();
+                }
+                const t = (this.position.z - origin.z) / dz;
+                if (!Number.isFinite(t) || t < minT)
+                    return null;
+                const hitPoint = origin.clone().addScaledVector(direction, t);
+                this.incidentRays.push(ray.clone());
+                return hitPoint;
+            }
+            // 2) 구면: |O + tD - C|^2 = r^2 를 풀어 가장 가까운 양의 t 선택
+            const zAtOriginXY = this.surfaceZAtXY(origin.x, origin.y);
+            if (Number.isFinite(zAtOriginXY)) {
+                const f0 = origin.z - zAtOriginXY;
+                if (Math.abs(f0) <= onSurfaceTol) {
+                    this.incidentRays.push(ray.clone());
+                    return origin.clone();
+                }
+                if (f0 > 0
+                    && f0 <= coincidentTol
+                    && direction.z > 0
+                    && this.position.z <= origin.z + coincidentTol) {
+                    this.incidentRays.push(ray.clone());
+                    return origin.clone();
+                }
+            }
+            const center = this.sphereCenter();
+            const oc = origin.clone().sub(center);
+            const b = 2 * direction.dot(oc);
+            const c = oc.lengthSq() - this.r * this.r;
+            const rawDiscriminant = b * b - 4 * c;
+            if (rawDiscriminant < -1e-10)
+                return null;
+            const discriminant = Math.max(0, rawDiscriminant);
+            const root = Math.sqrt(discriminant);
+            const t0 = (-b - root) / 2;
+            const t1 = (-b + root) / 2;
+            const candidates = [t0, t1]
+                .filter((t) => Number.isFinite(t) && t > minT)
+                .sort((a, b2) => a - b2);
+            if (!candidates.length)
+                return null;
+            const hitPoint = origin.clone().addScaledVector(direction, candidates[0]);
+            this.incidentRays.push(ray.clone());
+            return hitPoint;
+        }
+        refract(ray) {
+            const hitPoint = this.incident(ray);
+            if (!hitPoint)
+                return null;
+            // 스넬의 법칙 벡터형 구현
+            const incidentDir = ray.getDirection().normalize();
+            const normal = this.normalIntoSecondMedium(hitPoint);
+            // 법선과 입사광의 방향이 반대면 법선을 뒤집어 "2번째 매질 방향"으로 정렬
+            if (normal.dot(incidentDir) < 0) {
+                normal.multiplyScalar(-1);
+            }
+            const cos1 = Math.max(-1, Math.min(1, normal.dot(incidentDir)));
+            const sin1Sq = Math.max(0, 1 - cos1 * cos1);
+            const sin2 = (this.n_before / this.n_after) * Math.sqrt(sin1Sq);
+            // 전반사(TIR)
+            if (sin2 > 1 + 1e-10)
+                return null;
+            const cos2 = Math.sqrt(Math.max(0, 1 - sin2 * sin2));
+            const tangent = incidentDir.clone().sub(normal.clone().multiplyScalar(cos1));
+            const outDirection = tangent.lengthSq() < 1e-12
+                ? incidentDir.clone()
+                : normal.clone()
+                    .multiplyScalar(cos2)
+                    .add(tangent.normalize().multiplyScalar(sin2))
+                    .normalize();
+            // 원본 광선을 복제해 굴절된 새 광선으로 이어붙입니다.
+            const refractedRay = ray.clone();
+            refractedRay.appendPoint(hitPoint);
+            refractedRay.continueFrom(hitPoint.clone().addScaledVector(outDirection, RAY_SURFACE_ESCAPE_MM), outDirection);
+            this.refractedRays.push(refractedRay.clone());
+            return refractedRay;
+        }
+    }
+
+    class EyeModelParameter {
+        constructor(parameter) {
+            this.parameter = parameter;
+        }
         createSurface() {
-            return NavarroParameter.parameter.surfaces.map((surface) => {
+            return this.parameter.surfaces.map((surface) => {
+                if (surface.type === "spherical") {
+                    return new SphericalSurface({
+                        type: "spherical",
+                        name: surface.name,
+                        r: surface.radius,
+                        position: { x: 0, y: 0, z: surface.z },
+                        tilt: { x: 0, y: 0 },
+                        n_before: surface.n_before,
+                        n_after: surface.n_after,
+                    });
+                }
                 if (surface.type === "aspherical") {
-                    if (surface.conic == null
-                        || surface.n_before == null
-                        || surface.n_after == null) {
-                        throw new Error(`Missing aspherical properties for surface: ${surface.name}`);
-                    }
                     return new AsphericalSurface({
                         type: "aspherical",
                         name: surface.name,
@@ -7301,8 +7670,81 @@
                         retina_extra_after: true,
                     });
                 }
-                throw new Error(`Unsupported surface type in Navarro model: ${surface.type}`);
+                throw new Error(`Unsupported surface type: ${surface.type}`);
             });
+        }
+    }
+
+    class GullstrandParameter extends EyeModelParameter {
+        constructor() {
+            super(GullstrandParameter.parameter);
+        }
+    }
+    GullstrandParameter.parameter = {
+        unit: "mm",
+        axis: "optical_axis_z",
+        origin: "cornea_anterior_vertex",
+        surfaces: [
+            {
+                type: "spherical",
+                name: "cornea_anterior",
+                z: 0.0,
+                radius: 7.7,
+                n_before: 1.0,
+                n_after: 1.376,
+            },
+            {
+                type: "spherical",
+                name: "cornea_posterior",
+                z: 0.5,
+                radius: 6.8,
+                n_before: 1.376,
+                n_after: 1.336,
+            },
+            {
+                type: "spherical",
+                name: "lens_anterior",
+                z: 3.6,
+                radius: 10.0,
+                n_before: 1.336,
+                n_after: 1.386,
+            },
+            {
+                type: "spherical",
+                name: "lens_nucleus_anterior",
+                z: 4.146,
+                radius: 7.911,
+                n_before: 1.386,
+                n_after: 1.406,
+            },
+            {
+                type: "spherical",
+                name: "lens_nucleus_posterior",
+                z: 6.565,
+                radius: -5.76,
+                n_before: 1.406,
+                n_after: 1.386,
+            },
+            {
+                type: "spherical",
+                name: "lens_posterior",
+                z: 7.2,
+                radius: -6,
+                n_before: 1.386,
+                n_after: 1.336,
+            },
+            {
+                type: "spherical-image",
+                name: "retina",
+                radius: -12, // mm (대략적인 망막 곡률)
+                z: 24.0 // 중심 위치
+            }
+        ],
+    };
+
+    class NavarroParameter extends EyeModelParameter {
+        constructor() {
+            super(NavarroParameter.parameter);
         }
     }
     NavarroParameter.parameter = {
@@ -7570,6 +8012,80 @@
                 effective_cylinder_d: effectiveCylinderD,
                 use_uv_midpoint: preferTop2Mid,
             };
+        }
+    }
+
+    class ApertureStopSurface extends Surface {
+        constructor(props) {
+            super({
+                type: "aperture_stop",
+                name: props.name,
+                position: props.position,
+                tilt: props.tilt,
+            });
+            this.shape = props.shape;
+            this.radius = Math.max(0, Number(props.radius ?? 0));
+            this.width = Math.max(0, Number(props.width ?? 0));
+            this.height = Math.max(0, Number(props.height ?? 0));
+        }
+        worldQuaternion() {
+            const tiltXRad = (this.tilt.x * Math.PI) / 180;
+            const tiltYRad = (this.tilt.y * Math.PI) / 180;
+            return new Quaternion().setFromEuler(new Euler(tiltXRad, tiltYRad, 0, "XYZ"));
+        }
+        localPointFromWorld(worldPoint) {
+            const inverse = this.worldQuaternion().invert();
+            return worldPoint
+                .clone()
+                .sub(this.position)
+                .applyQuaternion(inverse);
+        }
+        surfaceNormalWorld() {
+            return new Vector3(0, 0, 1).applyQuaternion(this.worldQuaternion()).normalize();
+        }
+        intersectForward(origin, direction) {
+            const normal = this.surfaceNormalWorld();
+            const denom = normal.dot(direction);
+            if (Math.abs(denom) < EPSILON)
+                return null;
+            const t = normal.dot(this.position.clone().sub(origin)) / denom;
+            if (!Number.isFinite(t) || t <= 1e-6)
+                return null;
+            return origin.clone().addScaledVector(direction, t);
+        }
+        isInsideAperture(hitPointWorld) {
+            const local = this.localPointFromWorld(hitPointWorld);
+            if (this.shape === "circle") {
+                if (this.radius <= 0)
+                    return false;
+                return Math.hypot(local.x, local.y) <= this.radius + 1e-9;
+            }
+            if (this.width <= 0 || this.height <= 0)
+                return false;
+            return (Math.abs(local.x) <= (this.width / 2) + 1e-9
+                && Math.abs(local.y) <= (this.height / 2) + 1e-9);
+        }
+        incident(ray) {
+            const origin = ray.endPoint();
+            const direction = ray.getDirection().normalize();
+            const hitPoint = this.intersectForward(origin, direction);
+            if (!hitPoint)
+                return null;
+            if (!this.isInsideAperture(hitPoint))
+                return null;
+            this.incidentRays.push(ray.clone());
+            return hitPoint;
+        }
+        refract(ray) {
+            const hitPoint = this.incident(ray);
+            if (!hitPoint)
+                return null;
+            const direction = ray.getDirection().normalize();
+            const passedRay = ray.clone();
+            passedRay.appendPoint(hitPoint);
+            passedRay.continueFrom(hitPoint.clone().addScaledVector(direction, RAY_SURFACE_ESCAPE_MM), direction);
+            this.refractedRays.push(passedRay.clone());
+            return passedRay;
         }
     }
 
@@ -7983,12 +8499,13 @@
             this.tracedRays = [];
             this.lastSturmGapAnalysis = null;
             this.lastAffineAnalysis = null;
-            const { eyeModel = "gullstrand", eye = { s: 0, c: 0, ax: 0 }, lens = [], light_source = { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 }, pupilDiameterMm = null, pupilPlaneZMm = null, } = props;
+            const { eyeModel = "gullstrand", eye = { s: 0, c: 0, ax: 0 }, lens = [], light_source = { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 }, pupil_type = "neutral", } = props;
             this.eyeModel = eyeModel;
+            const normalizedEyeSphere = Number(eye?.s ?? 0) + (eyeModel === "gullstrand" ? -1 : 0);
             // eye 입력은 auto refractor(굴절오차) 기준이므로,
             // 광학면에 적용할 때는 보정렌즈 파워 관점으로 부호를 반전합니다.
             this.eyePower = {
-                s: -Number(eye?.s ?? 0),
+                s: -normalizedEyeSphere,
                 c: -Number(eye?.c ?? 0),
                 ax: Number(eye?.ax ?? 0),
             };
@@ -8011,6 +8528,7 @@
                 c: Number(spec?.c ?? 0),
                 ax: Number(spec?.ax ?? 0),
             }));
+            this.pupilDiameterMm = Number(PUPIL_SIZE[pupil_type]);
             this.eyeModelParameter = eyeModel === "gullstrand" ? new GullstrandParameter() : new NavarroParameter();
             const eyeSt = new STSurface({
                 type: "compound",
@@ -8026,6 +8544,24 @@
                 n_after: FRAUNHOFER_REFRACTIVE_INDICES.aqueous.d,
             });
             this.surfaces = [eyeSt, ...this.eyeModelParameter.createSurface()];
+            this.hasPupilStop = false;
+            if (Number.isFinite(this.pupilDiameterMm) && this.pupilDiameterMm > 0) {
+                const pupilStop = new ApertureStopSurface({
+                    type: "aperture_stop",
+                    name: "pupil_stop",
+                    shape: "circle",
+                    radius: this.pupilDiameterMm / 2,
+                    // eye_st(눈 굴절력 surface)의 첫 굴절면(back vertex) 바로 앞에서 차단/통과를 판정합니다.
+                    position: {
+                        x: 0,
+                        y: 0,
+                        z: -EYE_ST_SURFACE_OFFSET_MM - (2 * RAY_SURFACE_ESCAPE_MM),
+                    },
+                    tilt: { x: 0, y: 0 },
+                });
+                this.surfaces = [pupilStop, ...this.surfaces];
+                this.hasPupilStop = true;
+            }
             this.lens = this.lensConfigs.map((spec, index) => new STSurface({
                 type: "compound",
                 name: `lens_st_${index + 1}`,
@@ -8047,8 +8583,6 @@
             this.light_source = light_source.type === "radial"
                 ? new RadialLightSource(light_source)
                 : new GridLightSource(light_source);
-            this.pupilDiameterMm = this.toFiniteNumberOrNull(pupilDiameterMm);
-            this.pupilPlaneZMm = this.toFiniteNumberOrNull(pupilPlaneZMm);
             this.retinaZMm = this.findRetinaZFromSurfaces();
         }
         /**
@@ -8069,7 +8603,9 @@
         rayTracing() {
             // 안경 렌즈(lens)와 안구 표면(eye model)을 하나의 광학 경로로 합쳐 순차 추적합니다.
             const surfaces = [...this.lens, ...this.surfaces].sort((a, b) => this.surfaceOrderZ(a) - this.surfaceOrderZ(b));
-            const sourceRays = this.light_source.emitRays().filter((ray) => this.isRayInsidePupil(ray));
+            const sourceRays = this.hasPupilStop
+                ? this.light_source.emitRays()
+                : this.light_source.emitRays().filter((ray) => this.isRayInsidePupil(ray));
             const traced = [];
             for (const sourceRay of sourceRays) {
                 let activeRay = sourceRay.clone();
@@ -8173,10 +8709,6 @@
             const points = ray.points;
             return Array.isArray(points) ? points : [];
         }
-        toFiniteNumberOrNull(value) {
-            const n = Number(value);
-            return Number.isFinite(n) ? n : null;
-        }
         findRetinaZFromSurfaces() {
             const retinaSurface = this.surfaces.find((surface) => this.readSurfaceName(surface) === "retina");
             const retinaZ = Number(this.readSurfacePosition(retinaSurface)?.z);
@@ -8189,20 +8721,9 @@
             const radius = diameter / 2;
             const points = this.getRayPoints(ray);
             const origin = points[0];
-            const direction = ray.getDirection();
-            if (!origin || !direction)
+            if (!origin)
                 return false;
-            const planeZ = this.pupilPlaneZMm;
-            if (!Number.isFinite(planeZ))
-                return Math.hypot(origin.x, origin.y) <= radius + 1e-6;
-            if (Math.abs(direction.z) < 1e-9)
-                return Math.hypot(origin.x, origin.y) <= radius + 1e-6;
-            const t = (planeZ - origin.z) / direction.z;
-            if (!Number.isFinite(t) || t < 0)
-                return false;
-            const x = origin.x + direction.x * t;
-            const y = origin.y + direction.y * t;
-            return Math.hypot(x, y) <= radius + 1e-6;
+            return Math.hypot(origin.x, origin.y) <= radius + 1e-6;
         }
         powerVectorFromCylinder(cylinderD, axisDeg) {
             const c = Number(cylinderD);

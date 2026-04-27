@@ -186,6 +186,11 @@
         spectacleS: toNumberParam("specS", -3.0),
         spectacleC: toNumberParam("specC", -1.5),
         spectacleAx: toNumberParam("specAx", 170),
+        spectaclePosX: toNumberParam("specPosX", 0),
+        spectaclePosY: toNumberParam("specPosY", 0),
+        spectaclePosZ: toNumberParam("specPosZ", -12),
+        spectacleTiltX: toNumberParam("specTiltX", 0),
+        spectacleTiltY: toNumberParam("specTiltY", 0),
         crossCylinderEnabled: toBooleanParam("xcylOn", true),
         crossCylinderS: toNumberParam("xcylS", 0.25),
         crossCylinderC: toNumberParam("xcylC", -0.5),
@@ -208,8 +213,15 @@
             s: Number(state.spectacleS),
             c: Number(state.spectacleC),
             ax: Number(state.spectacleAx),
-            position: { x: 0, y: 0, z: -12 },
-            tilt: { x: 0, y: 0 },
+            position: {
+              x: Number(state.spectaclePosX),
+              y: Number(state.spectaclePosY),
+              z: Number(state.spectaclePosZ),
+            },
+            tilt: {
+              x: Number(state.spectacleTiltX),
+              y: Number(state.spectacleTiltY),
+            },
           });
         }
         return lens;
@@ -225,6 +237,11 @@
         params.set("specS", String(uiState.spectacleS));
         params.set("specC", String(uiState.spectacleC));
         params.set("specAx", String(uiState.spectacleAx));
+        params.set("specPosX", String(uiState.spectaclePosX));
+        params.set("specPosY", String(uiState.spectaclePosY));
+        params.set("specPosZ", String(uiState.spectaclePosZ));
+        params.set("specTiltX", String(uiState.spectacleTiltX));
+        params.set("specTiltY", String(uiState.spectacleTiltY));
         params.set("xcylOn", String(uiState.crossCylinderEnabled));
         params.set("xcylS", String(uiState.crossCylinderS));
         params.set("xcylC", String(uiState.crossCylinderC));
@@ -257,6 +274,11 @@
       specFolder.add(uiState, "spectacleS", -20, 20, 0.25).name("Spec S (D)").onFinishChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectacleC", -10, 10, 0.25).name("Spec C (D)").onFinishChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectacleAx", 0, 180, 1).name("Spec Axis").onFinishChange(requestSimulationRefresh);
+      specFolder.add(uiState, "spectaclePosX", -20, 20, 0.1).name("Spec Pos X (mm)").onFinishChange(requestSimulationRefresh);
+      specFolder.add(uiState, "spectaclePosY", -20, 20, 0.1).name("Spec Pos Y (mm)").onFinishChange(requestSimulationRefresh);
+      specFolder.add(uiState, "spectaclePosZ", -40, 10, 0.1).name("Spec Pos Z (mm)").onFinishChange(requestSimulationRefresh);
+      specFolder.add(uiState, "spectacleTiltX", -30, 30, 0.1).name("Spec Tilt X (deg)").onFinishChange(requestSimulationRefresh);
+      specFolder.add(uiState, "spectacleTiltY", -30, 30, 0.1).name("Spec Tilt Y (deg)").onFinishChange(requestSimulationRefresh);
 
       const xcylFolder = gui.addFolder("4) Cross Cylinder");
       xcylFolder.add(uiState, "crossCylinderEnabled").name("Insert Cross Cyl").onFinishChange(requestSimulationRefresh);

@@ -1,10 +1,7 @@
-import Surface from "../../surfaces/surface";
-import SphericalSurface from "../../surfaces/spherical-surface";
-import SphericalImageSurface from "../../surfaces/spherical-image";
-import { EyeModelParameter } from "./eyemodel-parameter";
+import { EyeModelParameter, EyeModelParameterConfig } from "./eyemodel-parameter";
 
-export class GullstrandParameter implements EyeModelParameter {
-  static parameter = {
+export class GullstrandParameter extends EyeModelParameter {
+  static parameter: EyeModelParameterConfig = {
     unit: "mm",
     axis: "optical_axis_z",
     origin: "cornea_anterior_vertex",
@@ -65,40 +62,8 @@ export class GullstrandParameter implements EyeModelParameter {
       }
     ],
   };
-  constructor() { }
-  createSurface(): Surface[] {
-    return GullstrandParameter.parameter.surfaces.map((surface) => {
-      if (surface.type === "spherical") {
-        if (surface.n_before == null || surface.n_after == null) {
-          throw new Error(`Missing refractive indices for surface: ${surface.name}`);
-        }
-
-        return new SphericalSurface({
-          type: "spherical",
-          name: surface.name,
-          r: surface.radius,
-          position: { x: 0, y: 0, z: surface.z },
-          tilt: { x: 0, y: 0 },
-          n_before: surface.n_before,
-          n_after: surface.n_after,
-        });
-      }
-
-      if (surface.type === "spherical-image") {
-        return new SphericalImageSurface({
-          type: "spherical-image",
-          name: surface.name,
-          radius: surface.radius,
-          position: { x: 0, y: 0, z: surface.z },
-          tilt: { x: 0, y: 0 },
-          retina_extra_after: true,
-        });
-      }
-
-      throw new Error(`Unsupported surface type in Gullstrand model: ${surface.type}`);
-    });
+  constructor() {
+    super(GullstrandParameter.parameter);
   }
-
-
 }
 
