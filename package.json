@@ -6,13 +6,15 @@
   "module": "./dist/scax-engine.js",
   "types": "./dist/types/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.map"
   ],
   "scripts": {
     "clean": "rimraf dist",
     "build": "npm run clean && tsc -p tsconfig.types.json && rollup -c rollup.config.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run test && npm run build"
   },
   "repository": {
     "type": "git",
@@ -24,7 +26,7 @@
     "typescript",
     "library"
   ],
-  "author": "",
+  "author": "vizyman",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -41,6 +43,9 @@
     "url": "https://github.com/vizyman/scax-engine/issues"
   },
   "homepage": "https://github.com/vizyman/scax-engine#readme",
+  "engines": {
+    "node": ">=20"
+  },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^29.0.2",
     "@rollup/plugin-node-resolve": "^16.0.3",
