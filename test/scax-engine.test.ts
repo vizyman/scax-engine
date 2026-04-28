@@ -59,13 +59,14 @@ describe("SCAXEngine", () => {
   });
 
   describe("simulate 및 rayTracing", () => {
-    it("추적된 광선 배열과 유발 난시 필드를 반환한다", () => {
+    it("추적된 광선 배열과 유발 난시/빛 편위 필드를 반환한다", () => {
       const simulator = new SCAXEngine({
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
       const result = simulator.simulate();
       expect(Array.isArray(result.traced_rays)).toBe(true);
       expect(result).toHaveProperty("induced_astigmatism");
+      expect(result).toHaveProperty("light_deviation");
     });
 
     it("동공이 축동되면 추적 광선 수가 증가하지 않는다", () => {
@@ -82,6 +83,120 @@ describe("SCAXEngine", () => {
       const filteredCount = withSmallPupil.rayTracing().length;
       expect(baseCount).toBeGreaterThanOrEqual(0);
       expect(filteredCount).toBeLessThanOrEqual(baseCount);
+    });
+
+    it("눈 처방 프리즘과 동일한 렌즈 프리즘이면 net 편위가 0에 가깝다", () => {
+      const simulator = new SCAXEngine({
+        eye: { s: 0, c: 0, ax: 0, p: 1, p_ax: 180 },
+        lens: [{
+          s: 2,
+          c: 0,
+          ax: 0,
+          p: 1,
+          p_ax: 180,
+          position: { x: 0, y: 0, z: 12 },
+          tilt: { x: 0, y: 0 },
+        }],
+        light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
+      });
+      const result = simulator.simulate();
+      expect(Math.abs(result.light_deviation.net_prism.x)).toBeLessThan(1e-9);
+      expect(Math.abs(result.light_deviation.net_prism.y)).toBeLessThan(1e-9);
+      expect(result.light_deviation.net_prism.magnitude).toBeLessThan(1e-9);
+    });
+
+    it("eye/lens 모두 교정도수 입력일 때 0도 동일값이면 net 편위가 0에 가깝다", () => {
+      const simulator = new SCAXEngine({
+        eye: { s: 0, c: 0, ax: 0, p: 2, p_ax: 0 },
+        lens: [{
+          s: 0,
+          c: 0,
+          ax: 0,
+          p: 2,
+          p_ax: 0,
+          position: { x: 0, y: 0, z: 12 },
+          tilt: { x: 0, y: 0 },
+        }],
+        light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
+      });
+      const result = simulator.simulate();
+      expect(Math.abs(result.light_deviation.net_prism.x)).toBeLessThan(1e-9);
+      expect(Math.abs(result.light_deviation.net_prism.y)).toBeLessThan(1e-9);
+      expect(result.light_deviation.net_prism.magnitude).toBeLessThan(1e-9);
+      expect(Math.abs(result.light_deviation.lens_prism_total.y)).toBeLessThan(1e-9);
+    });
+
+    it("렌더용 눈 회전량은 eye 프리즘 벡터 방향으로 계산된다", () => {
+      const simulator = new SCAXEngine({
+        eye: { s: 0, c: 0, ax: 0, p: 1, p_ax: 0 },
+        light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
+      });
+      const rotation = simulator.getEyeRotationForRender();
+      expect(rotation.source_prism.p).toBe(1);
+      expect(rotation.source_prism.p_ax).toBe(0);
+      // p=1Δ, base 0° 입력이면 렌더 회전 x는 음수 방향으로 계산된다.
+      expect(rotation.x_deg).toBeLessThan(0);
+      expect(Math.abs(rotation.magnitude_deg)).toBeCloseTo(0.57, 1);
+    });
+
+    it("순수 프리즘 렌즈(S=0,C=0)도 Base 기준 반대방향으로 광선을 편위시킨다", () => {
+      const noPrism = new SCAXEngine({
+        eye: { s: 0, c: 0, ax: 0, p: 0, p_ax: 0 },
+        lens: [{ s: 0, c: 0, ax: 0, p: 0, p_ax: 0, position: { x: 0, y: 0, z: 12 }, tilt: { x: 0, y: 0 } }],
+        light_source: { type: "radial", radius: 0, division: 4, angle_division: 8, z: -20, vergence: 0 },
+      });
+      const withPrism = new SCAXEngine({
+        eye: { s: 0, c: 0, ax: 0, p: 0, p_ax: 0 },
+        lens: [{ s: 0, c: 0, ax: 0, p: 4, p_ax: 0, position: { x: 0, y: 0, z: 12 }, tilt: { x: 0, y: 0 } }],
+        light_source: { type: "radial", radius: 0, division: 4, angle_division: 8, z: -20, vergence: 0 },
+      });
+      const noPrismDir = noPrism.rayTracing()[0]?.getDirection();
+      const withPrismDir = withPrism.rayTracing()[0]?.getDirection();
+      expect(noPrismDir).toBeDefined();
+      expect(withPrismDir).toBeDefined();
+      expect(Math.abs(withPrismDir!.x)).toBeGreaterThan(Math.abs(noPrismDir!.x) + 1e-6);
+      expect(withPrismDir!.x).toBeLessThan(0);
+    });
+
+    it("프리즘 축 90도는 렌즈->각막 Base 기준에서 y 양의 방향으로 적용된다", () => {
+      const noPrism = new SCAXEngine({
+        eye: { s: 0, c: 0, ax: 0, p: 0, p_ax: 0 },
+        lens: [{ s: 0, c: 0, ax: 0, p: 0, p_ax: 0, position: { x: 0, y: 0, z: 12 }, tilt: { x: 0, y: 0 } }],
+        light_source: { type: "radial", radius: 0, division: 4, angle_division: 8, z: -20, vergence: 0 },
+      });
+      const withPrism90 = new SCAXEngine({
+        eye: { s: 0, c: 0, ax: 0, p: 0, p_ax: 0 },
+        lens: [{ s: 0, c: 0, ax: 0, p: 4, p_ax: 90, position: { x: 0, y: 0, z: 12 }, tilt: { x: 0, y: 0 } }],
+        light_source: { type: "radial", radius: 0, division: 4, angle_division: 8, z: -20, vergence: 0 },
+      });
+      const noPrismDir = noPrism.rayTracing()[0]?.getDirection();
+      const withPrismDir = withPrism90.rayTracing()[0]?.getDirection();
+      expect(noPrismDir).toBeDefined();
+      expect(withPrismDir).toBeDefined();
+      expect(Math.abs(withPrismDir!.y)).toBeGreaterThan(Math.abs(noPrismDir!.y) + 1e-6);
+      expect(withPrismDir!.y).toBeGreaterThan(0);
+    });
+
+    it("eye 프리즘 처방은 광선 추적에도 반영되어 입사광 방향을 바꾼다", () => {
+      const base = new SCAXEngine({
+        eye: { s: 0, c: 0, ax: 0, p: 0, p_ax: 0 },
+        lens: [],
+        light_source: { type: "radial", radius: 0, division: 4, angle_division: 8, z: -20, vergence: 0 },
+      });
+      const withEyePrism = new SCAXEngine({
+        eye: { s: 0, c: 0, ax: 0, p: 2, p_ax: 0 },
+        lens: [],
+        light_source: { type: "radial", radius: 0, division: 4, angle_division: 8, z: -20, vergence: 0 },
+      });
+      const baseDir = base.rayTracing()[0]?.getDirection();
+      const prismDir = withEyePrism.rayTracing()[0]?.getDirection();
+      expect(baseDir).toBeDefined();
+      expect(prismDir).toBeDefined();
+      expect(Math.abs(prismDir!.x)).toBeGreaterThan(Math.abs(baseDir!.x) + 1e-6);
+      expect(prismDir!.x).toBeLessThan(0);
+      const withEyePrismSim = withEyePrism.simulate();
+      expect(withEyePrismSim.light_deviation.eye_prism_effect.magnitude).toBeCloseTo(2, 8);
+      expect(withEyePrism.getEyeRotationForRender().magnitude_deg).toBeGreaterThan(0);
     });
   });
 });

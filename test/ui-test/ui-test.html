@@ -142,25 +142,54 @@
       scene.add(new THREE.AxesHelper(20));
       scene.add(new THREE.GridHelper(200, 20, 0x334155, 0x1f2937));
       const simulationObjects = [];
-      function addSimulationObject(object3d) {
+      function addSimulationObject(object3d, parent) {
         simulationObjects.push(object3d);
+        if (parent && typeof parent.add === "function") {
+          parent.add(object3d);
+          return;
+        }
         scene.add(object3d);
+      }
+      function disposeObject3D(object3d) {
+        if (!object3d) return;
+        if (typeof object3d.traverse === "function") {
+          object3d.traverse(function (node) {
+            if (node?.geometry && typeof node.geometry.dispose === "function") {
+              node.geometry.dispose();
+            }
+            if (node?.material) {
+              if (Array.isArray(node.material)) {
+                node.material.forEach(function (m) {
+                  if (m && typeof m.dispose === "function") m.dispose();
+                });
+              } else if (typeof node.material.dispose === "function") {
+                node.material.dispose();
+              }
+            }
+          });
+          return;
+        }
+        if (object3d?.geometry && typeof object3d.geometry.dispose === "function") {
+          object3d.geometry.dispose();
+        }
+        if (object3d?.material) {
+          if (Array.isArray(object3d.material)) {
+            object3d.material.forEach(function (m) {
+              if (m && typeof m.dispose === "function") m.dispose();
+            });
+          } else if (typeof object3d.material.dispose === "function") {
+            object3d.material.dispose();
+          }
+        }
       }
       function clearSimulationObjects() {
         simulationObjects.forEach(function (object3d) {
-          if (object3d?.geometry && typeof object3d.geometry.dispose === "function") {
-            object3d.geometry.dispose();
+          disposeObject3D(object3d);
+          if (object3d?.parent) {
+            object3d.parent.remove(object3d);
+          } else {
+            scene.remove(object3d);
           }
-          if (object3d?.material) {
-            if (Array.isArray(object3d.material)) {
-              object3d.material.forEach(function (m) {
-                if (m && typeof m.dispose === "function") m.dispose();
-              });
-            } else if (typeof object3d.material.dispose === "function") {
-              object3d.material.dispose();
-            }
-          }
-          scene.remove(object3d);
         });
         simulationObjects.length = 0;
       }
@@ -181,13 +210,16 @@
       const CROSS_CYL_MERIDIAN_PLUS_D = 0.25;
       const CROSS_CYL_MERIDIAN_MINUS_D = -0.25;
       const SPECTACLE_VD_Z_MM = -18;
+      const EYE_ROTATION_PIVOT_FROM_CORNEA_MM = 13;
 
       const uiState = {
         eyeModel: (searchParams.get("eyeModel") === "gullstrand" ? "gullstrand" : "navarro"),
         eyeS: toNumberParam("eyeS", 0.0),
         eyeC: toNumberParam("eyeC", 0.0),
         eyeAx: toNumberParam("eyeAx", 180),
-        lightSourceType: (function () {ㅅ
+        eyeP: toNumberParam("eyeP", 0),
+        eyePAx: toNumberParam("eyePAx", 0),
+        lightSourceType: (function () {
           const value = String(searchParams.get("lsType") || "grid");
           if (value === "radial" || value === "grid_rg") return value;
           return "grid";
@@ -203,6 +235,8 @@
         spectacleS: toNumberParam("specS", 0.0),
         spectacleC: toNumberParam("specC", 0.0),
         spectacleAx: toNumberParam("specAx", 180),
+        spectacleP: toNumberParam("specP", 0),
+        spectaclePAx: toNumberParam("specPAx", 0),
         spectaclePosX: toNumberParam("specPosX", 0),
         spectaclePosY: toNumberParam("specPosY", 0),
         spectaclePosZ: toNumberParam("specPosZ", SPECTACLE_VD_Z_MM),
@@ -221,6 +255,8 @@
             s: s,
             c: c,
             ax: Number(state.crossCylinderAx),
+            p: 0,
+            p_ax: 0,
             // VD-2 means 2 mm closer to the eye (z increases toward eye).
             position: { x: 0, y: 0, z: SPECTACLE_VD_Z_MM + 2 },
             tilt: { x: 0, y: 0 },
@@ -231,6 +267,8 @@
             s: Number(state.spectacleS),
             c: Number(state.spectacleC),
             ax: Number(state.spectacleAx),
+            p: Number(state.spectacleP),
+            p_ax: Number(state.spectaclePAx),
             position: {
               x: Number(state.spectaclePosX),
               y: Number(state.spectaclePosY),
@@ -282,6 +320,8 @@
         params.set("eyeS", String(uiState.eyeS));
         params.set("eyeC", String(uiState.eyeC));
         params.set("eyeAx", String(uiState.eyeAx));
+        params.set("eyeP", String(uiState.eyeP));
+        params.set("eyePAx", String(uiState.eyePAx));
         params.set("lsType", String(uiState.lightSourceType));
         params.set("lsWidth", String(uiState.lightWidth));
         params.set("lsHeight", String(uiState.lightHeight));
@@ -294,6 +334,8 @@
         params.set("specS", String(uiState.spectacleS));
         params.set("specC", String(uiState.spectacleC));
         params.set("specAx", String(uiState.spectacleAx));
+        params.set("specP", String(uiState.spectacleP));
+        params.set("specPAx", String(uiState.spectaclePAx));
         params.set("specPosX", String(uiState.spectaclePosX));
         params.set("specPosY", String(uiState.spectaclePosY));
         params.set("specPosZ", String(uiState.spectaclePosZ));
@@ -319,10 +361,12 @@
       modelFolder.add(uiState, "eyeModel", ["gullstrand", "navarro"]).name("Eye Model").onFinishChange(requestSimulationRefresh);
       modelFolder.open();
 
-      const eyeFolder = gui.addFolder("2) Eye Refraction (S/C/Ax)");
+      const eyeFolder = gui.addFolder("2) Eye Refraction (S/C/Ax + Prism)");
       eyeFolder.add(uiState, "eyeS", -20, 20, 0.25).name("Eye S (D)").onFinishChange(requestSimulationRefresh);
       eyeFolder.add(uiState, "eyeC", -10, 10, 0.25).name("Eye C (D)").onFinishChange(requestSimulationRefresh);
       eyeFolder.add(uiState, "eyeAx", 0, 180, 1).name("Eye Axis").onFinishChange(requestSimulationRefresh);
+      eyeFolder.add(uiState, "eyeP", 0, 20, 0.1).name("Eye Prism (Δ)").onChange(requestSimulationRefresh);
+      eyeFolder.add(uiState, "eyePAx", 0, 360, 1).name("Eye Prism Base Axis").onChange(requestSimulationRefresh);
 
       const lightFolder = gui.addFolder("3) Light Source");
       lightFolder
@@ -342,6 +386,8 @@
       specFolder.add(uiState, "spectacleS", -20, 20, 0.25).name("Spec S (D)").onFinishChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectacleC", -10, 10, 0.25).name("Spec C (D)").onFinishChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectacleAx", 0, 180, 1).name("Spec Axis").onFinishChange(requestSimulationRefresh);
+      specFolder.add(uiState, "spectacleP", 0, 20, 0.1).name("Spec Prism (Δ)").onChange(requestSimulationRefresh);
+      specFolder.add(uiState, "spectaclePAx", 0, 360, 1).name("Spec Prism Base Axis").onChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectaclePosX", -20, 20, 0.1).name("Spec Pos X (mm)").onFinishChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectaclePosY", -20, 20, 0.1).name("Spec Pos Y (mm)").onFinishChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectaclePosZ", -80, 20, 0.1).name("Spec Pos Z (mm)").onFinishChange(requestSimulationRefresh);
@@ -576,7 +622,7 @@
       }
 
       function drawMeridian(surface, axisDeg, halfLength, color) {
-        if (!surface) return false;
+        if (!surface) return null;
         const pos = surface.position || { x: 0, y: 0, z: 0 };
         const axisRad = (axisDeg * Math.PI) / 180;
         const c = Math.cos(axisRad);
@@ -591,8 +637,18 @@
           opacity: 0.95,
         });
         const line = new THREE.Line(geometry, material);
-        addSimulationObject(line);
-        return true;
+        return line;
+      }
+
+      function applyEyeRenderRotation(object3d, eyeRotationForRender) {
+        if (!object3d) return;
+        const rxDeg = Number(eyeRotationForRender?.x_deg);
+        const ryDeg = Number(eyeRotationForRender?.y_deg);
+        // Prism vector axes (x,y) map to eye orientation as:
+        // - x component => yaw around Y axis
+        // - y component => pitch around X axis (Three.js +X pitch tilts toward -Y, so negate)
+        object3d.rotation.x = Number.isFinite(ryDeg) ? THREE.MathUtils.degToRad(-ryDeg) : 0;
+        object3d.rotation.y = Number.isFinite(rxDeg) ? THREE.MathUtils.degToRad(rxDeg) : 0;
       }
 
       function getRayPoints(ray) {
@@ -836,19 +892,51 @@
         return true;
       }
 
+      function drawPrismArrow(origin, vec2, color, scale, minLength) {
+        const vx = Number(vec2?.x);
+        const vy = Number(vec2?.y);
+        if (!Number.isFinite(vx) || !Number.isFinite(vy)) return false;
+        const lengthMm = Math.max(minLength, Math.hypot(vx, vy) * scale);
+        if (lengthMm <= 1e-9) return false;
+        const direction = new THREE.Vector3(vx, vy, 0);
+        if (direction.lengthSq() < 1e-12) return false;
+        direction.normalize();
+        const arrow = new THREE.ArrowHelper(direction, origin, lengthMm, color, 1.6, 0.9);
+        addSimulationObject(arrow);
+        return true;
+      }
+
       function runSimulationAndRender() {
         clearSimulationObjects();
         const engine = new ScaxEngine.SCAXEngine({
           eyeModel: uiState.eyeModel,
-          eye: { s: uiState.eyeS, c: uiState.eyeC, ax: uiState.eyeAx },
+          eye: {
+            s: uiState.eyeS,
+            c: uiState.eyeC,
+            ax: uiState.eyeAx,
+            p: uiState.eyeP,
+            p_ax: uiState.eyePAx,
+          },
           lens: buildLensConfigs(uiState),
           light_source: buildLightSourceConfig(uiState),
         });
+        const eyeRotationForRender = engine.getEyeRotationForRender();
 
         const surfaces = []
           .concat(engine.lens || [])
           .concat(engine.surfaces || []);
+        const eyeSurfaceSet = new Set((engine.surfaces || []).filter(Boolean));
+        const eyeRenderGroup = new THREE.Group();
+        eyeRenderGroup.name = "eye-render-group";
+        eyeRenderGroup.position.set(0, 0, EYE_ROTATION_PIVOT_FROM_CORNEA_MM);
+        applyEyeRenderRotation(eyeRenderGroup, eyeRotationForRender);
+        const eyeGeometryGroup = new THREE.Group();
+        eyeGeometryGroup.name = "eye-geometry-group";
+        eyeGeometryGroup.position.set(0, 0, -EYE_ROTATION_PIVOT_FROM_CORNEA_MM);
+        eyeRenderGroup.add(eyeGeometryGroup);
+        addSimulationObject(eyeRenderGroup);
         const simulationResult = engine.simulate();
+        const lightDeviation = simulationResult?.light_deviation || null;
         const tracedRays = Array.isArray(simulationResult?.traced_rays)
           ? simulationResult.traced_rays
           : [];
@@ -918,7 +1006,11 @@
             });
 
             const mesh = new THREE.Mesh(geometry, material);
-            addSimulationObject(mesh);
+            if (eyeSurfaceSet.has(surface)) {
+              addSimulationObject(mesh, eyeGeometryGroup);
+            } else {
+              addSimulationObject(mesh);
+            }
 
             meshCount += 1;
             vertexCount += buffer.positions.length / 3;
@@ -936,14 +1028,23 @@
 
         meridianTargets.forEach(function (surface) {
           if (!surface) return;
+          const isEyeSurface = eyeSurfaceSet.has(surface);
           const parts = String(surface.type || "").toLowerCase() === "compound"
             ? [surface.front].filter(Boolean)
             : [surface];
           parts.forEach(function (part) {
             const axisDeg = Number(part?.ax ?? surface?.ax ?? 0);
             const halfLength = Math.max(2.5, estimateSurfaceRadius(part || surface) * 0.9);
-            if (drawMeridian(part, axisDeg, halfLength, 0x10b981)) meridianLineCount += 1;
-            if (drawMeridian(part, axisDeg + 90, halfLength, 0xf59e0b)) meridianLineCount += 1;
+            const major = drawMeridian(part, axisDeg, halfLength, 0x10b981);
+            if (major) {
+              addSimulationObject(major, isEyeSurface ? eyeGeometryGroup : null);
+              meridianLineCount += 1;
+            }
+            const minor = drawMeridian(part, axisDeg + 90, halfLength, 0xf59e0b);
+            if (minor) {
+              addSimulationObject(minor, isEyeSurface ? eyeGeometryGroup : null);
+              meridianLineCount += 1;
+            }
           });
         });
 
@@ -1120,6 +1221,18 @@
           }
         });
 
+        // Prism visualization arrows near the origin plane for quick visual feedback.
+        const prismArrowOrigin = new THREE.Vector3(0, 0, -2.0);
+        if (lightDeviation?.eye_prism_effect) {
+          drawPrismArrow(prismArrowOrigin, lightDeviation.eye_prism_effect, 0x38bdf8, 4.0, 1.2);
+        }
+        if (lightDeviation?.lens_prism_total) {
+          drawPrismArrow(prismArrowOrigin.clone().add(new THREE.Vector3(0, 0, -1.2)), lightDeviation.lens_prism_total, 0xf59e0b, 4.0, 1.2);
+        }
+        if (lightDeviation?.net_prism) {
+          drawPrismArrow(prismArrowOrigin.clone().add(new THREE.Vector3(0, 0, -2.4)), lightDeviation.net_prism, 0xef4444, 4.0, 1.2);
+        }
+
         const compoundText = compoundSummaries.length
           ? compoundSummaries
             .map(function (item) {
@@ -1136,8 +1249,10 @@
         "global: window.ScaxEngine.SCAXEngine\n" +
         "config: model=" + uiState.eyeModel +
         ", eye=(" + uiState.eyeS + "," + uiState.eyeC + "," + uiState.eyeAx + ")" +
+        ", eyePrismBase=(" + uiState.eyeP + "Δ@" + uiState.eyePAx + "°)" +
         ", light=" + uiState.lightSourceType +
         ", spec=" + (uiState.spectacleEnabled ? "on" : "off") +
+        (uiState.spectacleEnabled ? " (base " + uiState.spectacleP + "Δ@" + uiState.spectaclePAx + "°)" : "") +
         ", x-cyl=" + (uiState.crossCylinderEnabled
           ? "on (+0.25/−0.25 D, ax=" + uiState.crossCylinderAx + "°)"
           : "off") + "\n" +
@@ -1154,6 +1269,13 @@
         "trace debug fail@surface: " + failureText + "\n" +
         "trace debug fail reason: " + failureReasonText + "\n" +
         "lens_st_2_front z relation: " + lens2FrontZRelationText + "\n" +
+        "eye rotation(for render): x=" + toFixedOrNa(eyeRotationForRender?.x_deg, 3) +
+        "°, y=" + toFixedOrNa(eyeRotationForRender?.y_deg, 3) +
+        "°, mag=" + toFixedOrNa(eyeRotationForRender?.magnitude_deg, 3) + "°\n" +
+        "light deviation net prism: x=" + toFixedOrNa(simulationResult?.light_deviation?.net_prism?.x, 4) +
+        ", y=" + toFixedOrNa(simulationResult?.light_deviation?.net_prism?.y, 4) +
+        ", mag=" + toFixedOrNa(simulationResult?.light_deviation?.net_prism?.magnitude, 4) +
+        ", ang=" + toFixedOrNa(simulationResult?.light_deviation?.net_prism?.angle_deg, 2) + "°\n" +
         "meshes: " + meshCount + "\n" +
         "vertices: " + vertexCount + "\n" +
         "triangles: " + triangleCount + "\n" +

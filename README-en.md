@@ -6,7 +6,6 @@ Lightweight TypeScript optical simulation engine for ray tracing, Sturm analysis
 
 - Accuracy improves as rays become more paraxial.
 - This project supports monocular visualization.
-- Prism power visualization is planned.
 - Add power is not planned due to limitations of the model eye.
 
 ## Install
@@ -66,9 +65,9 @@ Creates a simulation engine instance. Internal `Sturm` and `Affine` helpers are 
 #### `props`
 
 - `eyeModel?: "gullstrand" | "navarro"` (default: `"gullstrand"`)
-- `eye?: { s: number; c: number; ax: number }` (default: `{ s: 0, c: 0, ax: 0 }`)
+- `eye?: { s: number; c: number; ax: number; p?: number; p_ax?: number }` (default: `{ s: 0, c: 0, ax: 0, p: 0, p_ax: 0 }`)
 - `lens?: LensConfig[]` (default: `[]`)
-  - `LensConfig = { s, c, ax, position: { x, y, z }, tilt: { x, y } }`
+  - `LensConfig = { s, c, ax, p?: number, p_ax?: number, position: { x, y, z }, tilt: { x, y } }`
   - `position.z` defaults to vertex distance `12(mm)` when omitted
 - `light_source?: LightSourceConfig`
   - Grid: `{ type: "grid", width, height, division, z, vergence }`
@@ -101,9 +100,37 @@ Same shape and defaults as **`new SCAXEngine(props?)`** above.
       eye: { d: number; tabo_deg: number } | null;
       lens: { d: number; tabo_deg: number } | null;
     };
+    deviation_from_baseline: {
+      baseline: { x: number; y: number; z: number };
+      current: { x: number; y: number; z: number };
+      dx: number;
+      dy: number;
+      dz: number;
+      magnitude_xy: number;
+      magnitude_xyz: number;
+    } | null;
+    light_deviation: {
+      eye_prism_effect: { x: number; y: number; magnitude: number; angle_deg: number };
+      lens_prism_total: { x: number; y: number; magnitude: number; angle_deg: number };
+      net_prism: { x: number; y: number; magnitude: number; angle_deg: number };
+      x_angle_deg: number;
+      y_angle_deg: number;
+      net_angle_deg: number;
+    };
   }
   ```
-  - Runs ray tracing and induced astigmatism calculation
+  - Runs ray tracing, induced astigmatism, baseline deviation, and light deviation calculation
+
+- `getEyeRotationForRender()`
+  ```ts
+  (): {
+    x_deg: number;
+    y_deg: number;
+    magnitude_deg: number;
+    source_prism: { p: number; p_ax: number };
+  }
+  ```
+  - Returns eye rotation values for rendering (based on eye prism prescription)
 
 - `getSturmGapAnalysis()`
   ```ts

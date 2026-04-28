@@ -5,7 +5,6 @@
 ## Roadmap
 - 근축광선일수록 정확도가 높아 집니다.
 - 이 프로젝트는 단안 시각화를 지원합니다.
-- 프리즘 도수 시각화도 지원할 예정정입니다.
 - 모형안 모델의 한계로 가입도(Add)는 지원 계획이 없습니다.
 
 영문 문서는 `README-en.md`를 참고해 주세요.
@@ -67,9 +66,9 @@ const next = engine.simulate();
 #### `props`
 
 - `eyeModel?: "gullstrand" | "navarro"` (기본값: `"gullstrand"`)
-- `eye?: { s: number; c: number; ax: number }` (기본값: `{ s: 0, c: 0, ax: 0 }`)
+- `eye?: { s: number; c: number; ax: number; p?: number; p_ax?: number }` (기본값: `{ s: 0, c: 0, ax: 0, p: 0, p_ax: 0 }`)
 - `lens?: LensConfig[]` (기본값: `[]`)
-  - `LensConfig = { s, c, ax, position: { x, y, z }, tilt: { x, y } }`
+  - `LensConfig = { s, c, ax, p?: number, p_ax?: number, position: { x, y, z }, tilt: { x, y } }`
   - `position.z`를 생략하면 vertex distance 기본값 `12(mm)`가 적용됩니다.
 - `light_source?: LightSourceConfig`
   - Grid: `{ type: "grid", width, height, division, z, vergence }`
@@ -78,6 +77,15 @@ const next = engine.simulate();
 - `pupil_type?: "constricted" | "neutral" | "dilated"` (기본값: `"neutral"`)
 
 동일한 `props` 옵션이 `update()`에도 적용됩니다(아래 참고). `update`에 부분 객체만 전달하면 생략된 최상위 키는 이전 `update` 값이 아니라 생성자 기본값으로 채워집니다. 하나만 바꾸고 나머지를 유지하려면 앱 상태에서 항상 전체 `props`를 구성해 전달하세요.
+
+#### 프리즘 입력 컨벤션
+
+- `eye.p/p_ax`는 **교정량(처방값)** 입니다.
+- `lens.p/p_ax`도 **교정량(처방값)** 입니다.
+- `p_ax` 각도 기준은 **렌즈 쪽에서 각막을 바라보는 시점**입니다.
+- 내부 `light_deviation` 계산에서 eye는 "실제 눈 편위"를 표현하기 위해 반대벡터(`-eye`)로 변환됩니다.
+- lens는 실제 광선을 굴절시키는 물리 요소이므로, 광선 추적에는 입력 방향(`+lens`)이 그대로 적용됩니다.
+- 따라서 교정 완료 조건은 `lens prism == eye prism`(크기/축 동일)이며, 이때 `net_prism`은 0에 가까워집니다.
 
 ### `engine.update(props?)`
 
@@ -102,9 +110,37 @@ const next = engine.simulate();
       eye: { d: number; tabo_deg: number } | null;
       lens: { d: number; tabo_deg: number } | null;
     };
+    deviation_from_baseline: {
+      baseline: { x: number; y: number; z: number };
+      current: { x: number; y: number; z: number };
+      dx: number;
+      dy: number;
+      dz: number;
+      magnitude_xy: number;
+      magnitude_xyz: number;
+    } | null;
+    light_deviation: {
+      eye_prism_effect: { x: number; y: number; magnitude: number; angle_deg: number };
+      lens_prism_total: { x: number; y: number; magnitude: number; angle_deg: number };
+      net_prism: { x: number; y: number; magnitude: number; angle_deg: number };
+      x_angle_deg: number;
+      y_angle_deg: number;
+      net_angle_deg: number;
+    };
   }
   ```
-  - 광선 추적과 유발 난시 계산을 실행합니다.
+  - 광선 추적, 유발 난시, baseline 대비 편위, 빛 편위량 계산을 실행합니다.
+
+- `getEyeRotationForRender()`
+  ```ts
+  (): {
+    x_deg: number;
+    y_deg: number;
+    magnitude_deg: number;
+    source_prism: { p: number; p_ax: number };
+  }
+  ```
+  - 렌더링에서 사용할 눈 회전량(eye prism 처방 기준)을 반환합니다.
 
 - `getSturmGapAnalysis()`
   ```ts
