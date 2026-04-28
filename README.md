@@ -36,11 +36,27 @@ console.log(result.traced_rays.length);
 console.log(result.induced_astigmatism);
 ```
 
+To reuse one engine in a UI (sliders, animation) instead of `new SCAXEngine` on every change, call `update` with a full `props` object, then `simulate` again. Omitted top-level fields fall back to the same defaults as the constructor (this is a fresh apply, not a deep merge with the previous run).
+
+```ts
+const engine = new SCAXEngine({ /* initial props */ });
+
+engine.update({
+  eyeModel: "gullstrand",
+  eye: { s: -2.5, c: -0.75, ax: 90 },
+  lens: [],
+  light_source: { type: "grid", width: 10, height: 10, division: 6, z: -10, vergence: 0 },
+  pupil_type: "neutral",
+});
+
+const next = engine.simulate();
+```
+
 ## API
 
 ### `new SCAXEngine(props?)`
 
-Creates a simulation engine instance.
+Creates a simulation engine instance. Internal `Sturm` and `Affine` helpers are created once per instance.
 
 #### `props`
 
@@ -55,7 +71,21 @@ Creates a simulation engine instance.
   - default is grid source `{ width: 10, height: 10, division: 4, z: -10, vergence: 0 }`
 - `pupil_type?: "constricted" | "neutral" | "dilated"` (default: `"neutral"`)
 
+The same `props` options apply to `update()` (see below). When you only pass a partial object to `update`, any omitted top-level key is filled with the constructor default—not with the value from the previous `update` call. To change one thing while keeping others, build a full `props` object in your app state and pass that each time.
+
+### `engine.update(props?)`
+
+Re-runs the same configuration path as the constructor: rebuilds eye/lens/surfaces/light source from `props` using the default values above for any omitted key. Does not merge with the previous in-memory settings.
+
+- `Sturm` and `Affine` instances are **not** recreated; any cached Sturm/affine results from before the update are cleared until you run those analyses again.
+
+#### `props`
+
+Same shape and defaults as **`new SCAXEngine(props?)`** above.
+
 ### Instance Methods
+
+- `update(props?)` — reconfigure the engine; see **`engine.update(props?)`** above.
 
 - `simulate()`
   ```ts

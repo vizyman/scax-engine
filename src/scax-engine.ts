@@ -71,24 +71,40 @@ type InducedAstigmatismSummary = {
  * - 망막 대응쌍, Sturm 분석, 왜곡(affine) 분석까지 제공합니다.
  */
 export default class SCAXEngine {
-  private eyeModel: EyeModel;
-  private surfaces: Surface[]; // eye model surfaces
-  private lens: Surface[]; // external spectacle lens surfaces
-  private light_source: LightSource;
-  private eyeModelParameter: EyeModelParameter;
+  private eyeModel!: EyeModel;
+  private surfaces!: Surface[]; // eye model surfaces
+  private lens!: Surface[]; // external spectacle lens surfaces
+  private light_source!: LightSource;
+  private eyeModelParameter!: EyeModelParameter;
   private tracedRays: Ray[] = [];
   private sturm: Sturm;
   private affine: Affine;
   private lastSturmGapAnalysis: ReturnType<Sturm["calculate"]> | null = null;
   private lastAffineAnalysis: ReturnType<Affine["estimate"]> = null;
-  private pupilDiameterMm: number | null;
-  private retinaZMm: number | null;
-  private hasPupilStop: boolean;
-  private eyePower: SCAxPower;
-  private lensConfigs: LensConfig[];
-  private lensPowers: SCAxPower[];
+  private pupilDiameterMm!: number | null;
+  private retinaZMm!: number | null;
+  private hasPupilStop!: boolean;
+  private eyePower!: SCAxPower;
+  private lensConfigs!: LensConfig[];
+  private lensPowers!: SCAxPower[];
 
   constructor(props: SCAXEngineProps = {}) {
+    this.sturm = new Sturm();
+    this.affine = new Affine();
+    this.configure(props);
+  }
+
+  /**
+   * 생성자와 동일한 기본값 규칙으로 광학 설정을 다시 적용합니다.
+   * 생략한 최상위 필드는 매번 기본값으로 돌아갑니다(이전 값과 병합하지 않음).
+   */
+  public update(props: SCAXEngineProps = {}) {
+    this.configure(props);
+  }
+
+  private configure(props: SCAXEngineProps = {}) {
+    this.lastSturmGapAnalysis = null;
+    this.lastAffineAnalysis = null;
     const {
       eyeModel = "gullstrand",
       eye = { s: 0, c: 0, ax: 0 },
@@ -174,8 +190,6 @@ export default class SCAXEngine {
       n: FRAUNHOFER_REFRACTIVE_INDICES.crown_glass,
       n_after: FRAUNHOFER_REFRACTIVE_INDICES.air,
     }));
-    this.sturm = new Sturm();
-    this.affine = new Affine();
     this.light_source = light_source.type === "radial"
       ? new RadialLightSource(light_source as RadialLightSourceProps)
       : light_source.type === "grid_rg"
