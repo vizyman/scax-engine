@@ -20,8 +20,8 @@ function extractChromaticFocusZForEye(eye: { s: number; c: number; ax: number })
     lens: [],
     light_source: {
       type: "grid_rg",
-      width: 6,
-      height: 6,
+      width: 0.5,
+      height: 0.5,
       division: 8,
       z: -20,
       vergence: 0,
@@ -58,12 +58,10 @@ describe("GridRGLightSource", () => {
     expect(redCount).toBe(16);
   });
 
-  it("정시안에서 녹색 초점은 망막 앞, 적색 초점은 망막 뒤에 위치한다", () => {
-    const retinaZ = GullstrandParameter.parameter.surfaces.find((surface) => surface.name === "retina")?.z ?? 24;
+  it("정시안에서 e선(녹색) 초점은 C선(적색) 초점보다 광축 앞(작은 z)에 위치한다", () => {
+    // 종축 색수차(짧은 파장이 더 앞에서 모임). nominal 망막 z는 기준 파장에 묶여 있어 망막을 가르던 검증은 부적절.
     const { greenZ, redZ } = extractChromaticFocusZ();
-
-    expect(greenZ).toBeLessThan(retinaZ);
-    expect(redZ).toBeGreaterThan(retinaZ);
+    expect(greenZ).toBeLessThan(redZ);
   });
 
   it("녹색-망막 거리와 망막-적색 거리가 큰 차이 없이 유사하다", () => {

@@ -177,6 +177,10 @@
         return fallback;
       }
 
+      /** 잭슨 크로스 실린더 주경선(D) — UI에서 고정. ST 입력: 약한 경선 s, 강한 경선 s+c, 축 TABO(deg). */
+      const CROSS_CYL_MERIDIAN_PLUS_D = 0.25;
+      const CROSS_CYL_MERIDIAN_MINUS_D = -0.25;
+
       const uiState = {
         eyeModel: (searchParams.get("eyeModel") === "gullstrand" ? "gullstrand" : "navarro"),
         eyeS: toNumberParam("eyeS", -2.0),
@@ -204,17 +208,17 @@
         spectacleTiltX: toNumberParam("specTiltX", 0),
         spectacleTiltY: toNumberParam("specTiltY", 0),
         crossCylinderEnabled: toBooleanParam("xcylOn", true),
-        crossCylinderS: toNumberParam("xcylS", 0.25),
-        crossCylinderC: toNumberParam("xcylC", -0.5),
         crossCylinderAx: toNumberParam("xcylAx", 180),
       };
 
       function buildLensConfigs(state) {
         const lens = [];
         if (state.crossCylinderEnabled) {
+          const s = CROSS_CYL_MERIDIAN_PLUS_D;
+          const c = CROSS_CYL_MERIDIAN_MINUS_D - CROSS_CYL_MERIDIAN_PLUS_D;
           lens.push({
-            s: Number(state.crossCylinderS),
-            c: Number(state.crossCylinderC),
+            s: s,
+            c: c,
             ax: Number(state.crossCylinderAx),
             position: { x: 0, y: 0, z: -18 },
             tilt: { x: 0, y: 0 },
@@ -294,8 +298,6 @@
         params.set("specTiltX", String(uiState.spectacleTiltX));
         params.set("specTiltY", String(uiState.spectacleTiltY));
         params.set("xcylOn", String(uiState.crossCylinderEnabled));
-        params.set("xcylS", String(uiState.crossCylinderS));
-        params.set("xcylC", String(uiState.crossCylinderC));
         params.set("xcylAx", String(uiState.crossCylinderAx));
         const nextUrl = window.location.pathname + "?" + params.toString();
         window.history.replaceState(null, "", nextUrl);
@@ -344,11 +346,9 @@
       specFolder.add(uiState, "spectacleTiltX", -30, 30, 0.1).name("Spec Tilt X (deg)").onFinishChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectacleTiltY", -30, 30, 0.1).name("Spec Tilt Y (deg)").onFinishChange(requestSimulationRefresh);
 
-      const xcylFolder = gui.addFolder("5) Cross Cylinder");
+      const xcylFolder = gui.addFolder("5) Cross Cylinder (+0.25 / −0.25 D, axis adjustable)");
       xcylFolder.add(uiState, "crossCylinderEnabled").name("Insert Cross Cyl").onFinishChange(requestSimulationRefresh);
-      xcylFolder.add(uiState, "crossCylinderS", -5, 5, 0.25).name("X-Cyl S (D)").onFinishChange(requestSimulationRefresh);
-      xcylFolder.add(uiState, "crossCylinderC", -5, 5, 0.25).name("X-Cyl C (D)").onFinishChange(requestSimulationRefresh);
-      xcylFolder.add(uiState, "crossCylinderAx", 0, 180, 1).name("X-Cyl Axis").onFinishChange(requestSimulationRefresh);
+      xcylFolder.add(uiState, "crossCylinderAx", 0, 180, 1).name("X-Cyl Axis (TABO °)").onFinishChange(requestSimulationRefresh);
 
       function buildDiskMeshData(pointAt, radius, radialSegments, angularSegments) {
         const positions = [];
@@ -1136,7 +1136,9 @@
         ", eye=(" + uiState.eyeS + "," + uiState.eyeC + "," + uiState.eyeAx + ")" +
         ", light=" + uiState.lightSourceType +
         ", spec=" + (uiState.spectacleEnabled ? "on" : "off") +
-        ", x-cyl=" + (uiState.crossCylinderEnabled ? "on" : "off") + "\n" +
+        ", x-cyl=" + (uiState.crossCylinderEnabled
+          ? "on (+0.25/−0.25 D, ax=" + uiState.crossCylinderAx + "°)"
+          : "off") + "\n" +
         "compound(back->front) check:\n" + compoundText + "\n" +
         "rays(simulated/rendered): " + tracedRays.length + " / " + rayCount + "\n" +
         "ray segments: " + raySegmentCount + "\n" +
