@@ -1,22 +1,21 @@
 # scax-engine
 
-광선 추적(ray tracing), Sturm 분석, 아핀 왜곡 추정, 유발 난시 계산을 위한 경량 TypeScript 광학 시뮬레이션 엔진입니다.
+Lightweight TypeScript optical simulation engine for ray tracing, Sturm analysis, affine distortion estimation, and induced astigmatism calculation.
 
 ## Roadmap
-- 근축광선일수록 정확도가 높아 집니다.
-- 이 프로젝트는 단안 시각화를 지원합니다.
-- 프리즘 도수 시각화도 지원할 예정정입니다.
-- 모형안 모델의 한계로 가입도(Add)는 지원 계획이 없습니다.
 
-영문 문서는 `README-en.md`를 참고해 주세요.
+- Accuracy improves as rays become more paraxial.
+- This project supports monocular visualization.
+- Prism power visualization is planned.
+- Add power is not planned due to limitations of the model eye.
 
-## 설치
+## Install
 
 ```bash
 npm install scax-engine
 ```
 
-## 빠른 시작
+## Quick Start
 
 ```ts
 import { SCAXEngine } from "scax-engine";
@@ -42,7 +41,7 @@ console.log(result.traced_rays.length);
 console.log(result.induced_astigmatism);
 ```
 
-UI(슬라이더, 애니메이션 등)에서 변경마다 `new SCAXEngine`을 다시 만들지 않고 하나의 엔진 인스턴스를 재사용하려면, 전체 `props` 객체로 `update`를 호출한 뒤 `simulate`를 다시 실행하세요. `update`에서 생략된 최상위 필드는 이전 상태를 유지하지 않고 생성자 기본값으로 채워집니다(이전 실행과 deep merge되지 않음).
+To reuse a single engine instance in UI flows (sliders, animation), call `update` with a full `props` object and then call `simulate` again instead of creating `new SCAXEngine` on every change. Omitted top-level fields fall back to constructor defaults (fresh apply, not deep merge with previous run).
 
 ```ts
 const engine = new SCAXEngine({ /* initial props */ });
@@ -62,36 +61,36 @@ const next = engine.simulate();
 
 ### `new SCAXEngine(props?)`
 
-시뮬레이션 엔진 인스턴스를 생성합니다. 내부 `Sturm`, `Affine` 헬퍼는 인스턴스당 한 번만 생성됩니다.
+Creates a simulation engine instance. Internal `Sturm` and `Affine` helpers are created once per instance.
 
 #### `props`
 
-- `eyeModel?: "gullstrand" | "navarro"` (기본값: `"gullstrand"`)
-- `eye?: { s: number; c: number; ax: number }` (기본값: `{ s: 0, c: 0, ax: 0 }`)
-- `lens?: LensConfig[]` (기본값: `[]`)
+- `eyeModel?: "gullstrand" | "navarro"` (default: `"gullstrand"`)
+- `eye?: { s: number; c: number; ax: number }` (default: `{ s: 0, c: 0, ax: 0 }`)
+- `lens?: LensConfig[]` (default: `[]`)
   - `LensConfig = { s, c, ax, position: { x, y, z }, tilt: { x, y } }`
-  - `position.z`를 생략하면 vertex distance 기본값 `12(mm)`가 적용됩니다.
+  - `position.z` defaults to vertex distance `12(mm)` when omitted
 - `light_source?: LightSourceConfig`
   - Grid: `{ type: "grid", width, height, division, z, vergence }`
   - Radial: `{ type: "radial", radius, division, angle_division, z, vergence }`
-  - 기본값은 grid 소스 `{ width: 10, height: 10, division: 4, z: -10, vergence: 0 }`입니다.
-- `pupil_type?: "constricted" | "neutral" | "dilated"` (기본값: `"neutral"`)
+  - default is grid source `{ width: 10, height: 10, division: 4, z: -10, vergence: 0 }`
+- `pupil_type?: "constricted" | "neutral" | "dilated"` (default: `"neutral"`)
 
-동일한 `props` 옵션이 `update()`에도 적용됩니다(아래 참고). `update`에 부분 객체만 전달하면 생략된 최상위 키는 이전 `update` 값이 아니라 생성자 기본값으로 채워집니다. 하나만 바꾸고 나머지를 유지하려면 앱 상태에서 항상 전체 `props`를 구성해 전달하세요.
+The same `props` options apply to `update()` (see below). If you pass a partial object to `update`, omitted top-level keys are filled with constructor defaults, not previous `update` values. To change one field while keeping others, build and pass a full `props` object each time.
 
 ### `engine.update(props?)`
 
-생성자와 동일한 설정 경로를 다시 실행합니다. `props`를 기준으로 eye/lens/surfaces/light source를 재구성하며, 생략된 키에는 위 기본값이 적용됩니다. 이전 메모리 설정과 merge되지 않습니다.
+Re-runs the same configuration path as the constructor: rebuilds eye/lens/surfaces/light source from `props` and uses the defaults above for omitted keys. It does not merge with previous in-memory settings.
 
-- `Sturm`, `Affine` 인스턴스 자체는 **재생성되지 않지만**, `update` 이전에 캐시된 Sturm/affine 분석 결과는 다시 분석을 수행하기 전까지 초기화됩니다.
+- `Sturm` and `Affine` instances are **not** recreated; cached Sturm/affine results from before `update` are cleared until those analyses are run again.
 
 #### `props`
 
-형태와 기본값은 위 **`new SCAXEngine(props?)`**와 동일합니다.
+Same shape and defaults as **`new SCAXEngine(props?)`** above.
 
-### 인스턴스 메서드
+### Instance Methods
 
-- `update(props?)` — 엔진 설정을 갱신합니다. 위 **`engine.update(props?)`** 참고.
+- `update(props?)` — reconfigure the engine; see **`engine.update(props?)`** above.
 
 - `simulate()`
   ```ts
@@ -104,7 +103,7 @@ const next = engine.simulate();
     };
   }
   ```
-  - 광선 추적과 유발 난시 계산을 실행합니다.
+  - Runs ray tracing and induced astigmatism calculation
 
 - `getSturmGapAnalysis()`
   ```ts
@@ -158,7 +157,7 @@ const next = engine.simulate();
     }>;
   } | null
   ```
-  - 최신 Sturm 분석 결과를 반환합니다.
+  - Returns the latest Sturm analysis result
 
 - `getAffineAnalysis()`
   ```ts
@@ -172,14 +171,13 @@ const next = engine.simulate();
     }>;
   } | null
   ```
-  - 최신 affine 분석 결과를 반환합니다.
+  - Returns the latest affine analysis result
 
+## UMD Usage
 
-## UMD 사용
+UMD build is generated at `dist/scax-engine.umd.js` and exposed as `ScaxEngine`.
 
-UMD 빌드는 `dist/scax-engine.umd.js`에 생성되며 전역 `ScaxEngine`으로 노출됩니다.
-
-## 개발
+## Development
 
 ```bash
 npm install
@@ -187,14 +185,14 @@ npm run build
 npm test
 ```
 
-### 스크립트
+### Scripts
 
-- `npm run clean` - `dist` 삭제
-- `npm run build` - ESM/CJS/UMD 번들과 타입 선언 빌드
-- `npm test` - Vitest 1회 실행
-- `npm run test:watch` - Vitest watch 모드 실행
+- `npm run clean` - remove `dist`
+- `npm run build` - build ESM/CJS/UMD bundles and type declarations
+- `npm test` - run Vitest once
+- `npm run test:watch` - run Vitest in watch mode
 
-## 배포
+## Publish
 
 ```bash
 npm run build
