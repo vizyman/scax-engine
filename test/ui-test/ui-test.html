@@ -180,11 +180,12 @@
       /** 잭슨 크로스 실린더 주경선(D) — UI에서 고정. ST 입력: 약한 경선 s, 강한 경선 s+c, 축 TABO(deg). */
       const CROSS_CYL_MERIDIAN_PLUS_D = 0.25;
       const CROSS_CYL_MERIDIAN_MINUS_D = -0.25;
+      const SPECTACLE_VD_Z_MM = -18;
 
       const uiState = {
         eyeModel: (searchParams.get("eyeModel") === "gullstrand" ? "gullstrand" : "navarro"),
-        eyeS: toNumberParam("eyeS", -2.0),
-        eyeC: toNumberParam("eyeC", -1.25),
+        eyeS: toNumberParam("eyeS", 0.0),
+        eyeC: toNumberParam("eyeC", 0.0),
         eyeAx: toNumberParam("eyeAx", 180),
         lightSourceType: (function () {
           const value = String(searchParams.get("lsType") || "grid");
@@ -198,16 +199,16 @@
         lightAngleDivision: toNumberParam("lsAngleDivision", 8),
         lightZ: toNumberParam("lsZ", -50),
         lightVergence: toNumberParam("lsVergence", 0),
-        spectacleEnabled: toBooleanParam("specOn", true),
-        spectacleS: toNumberParam("specS", -3.0),
-        spectacleC: toNumberParam("specC", -1.5),
-        spectacleAx: toNumberParam("specAx", 170),
+        spectacleEnabled: toBooleanParam("specOn", false),
+        spectacleS: toNumberParam("specS", 0.0),
+        spectacleC: toNumberParam("specC", 0.0),
+        spectacleAx: toNumberParam("specAx", 180),
         spectaclePosX: toNumberParam("specPosX", 0),
         spectaclePosY: toNumberParam("specPosY", 0),
-        spectaclePosZ: toNumberParam("specPosZ", -12),
+        spectaclePosZ: SPECTACLE_VD_Z_MM,
         spectacleTiltX: toNumberParam("specTiltX", 0),
         spectacleTiltY: toNumberParam("specTiltY", 0),
-        crossCylinderEnabled: toBooleanParam("xcylOn", true),
+        crossCylinderEnabled: toBooleanParam("xcylOn", false),
         crossCylinderAx: toNumberParam("xcylAx", 180),
       };
 
@@ -220,7 +221,8 @@
             s: s,
             c: c,
             ax: Number(state.crossCylinderAx),
-            position: { x: 0, y: 0, z: -18 },
+            // VD-2 means 2 mm closer to the eye (z increases toward eye).
+            position: { x: 0, y: 0, z: SPECTACLE_VD_Z_MM + 2 },
             tilt: { x: 0, y: 0 },
           });
         }
@@ -232,7 +234,7 @@
             position: {
               x: Number(state.spectaclePosX),
               y: Number(state.spectaclePosY),
-              z: Number(state.spectaclePosZ),
+              z: SPECTACLE_VD_Z_MM,
             },
             tilt: {
               x: Number(state.spectacleTiltX),
@@ -342,7 +344,7 @@
       specFolder.add(uiState, "spectacleAx", 0, 180, 1).name("Spec Axis").onFinishChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectaclePosX", -20, 20, 0.1).name("Spec Pos X (mm)").onFinishChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectaclePosY", -20, 20, 0.1).name("Spec Pos Y (mm)").onFinishChange(requestSimulationRefresh);
-      specFolder.add(uiState, "spectaclePosZ", -40, 10, 0.1).name("Spec Pos Z (mm)").onFinishChange(requestSimulationRefresh);
+      specFolder.add(uiState, "spectaclePosZ").name("Spec Pos Z (mm, fixed VD)");
       specFolder.add(uiState, "spectacleTiltX", -30, 30, 0.1).name("Spec Tilt X (deg)").onFinishChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectacleTiltY", -30, 30, 0.1).name("Spec Tilt Y (deg)").onFinishChange(requestSimulationRefresh);
 
@@ -429,7 +431,7 @@
 
         if (type === "spherical" || type === "spherical-image") {
           const isImageSurface = type === "spherical-image";
-          const r = Number(isImageSurface ? surface.radius : surface.r);
+          const r = Number(isImageSurface ? (surface.radius ?? surface.r) : surface.r);
           const planar = !Number.isFinite(r) || Math.abs(r) > 1e12;
           // Retina(spherical-image)는 적도 부근까지 그리면 형태가 과도하게 꺾여 보일 수 있어
           // 반경 대비 유효 aperture를 제한해 구면 캡으로 시각화합니다.
@@ -502,7 +504,7 @@
 
         if (type === "spherical" || type === "spherical-image") {
           const isImageSurface = type === "spherical-image";
-          const r = Number(isImageSurface ? surface.radius : surface.r);
+          const r = Number(isImageSurface ? (surface.radius ?? surface.r) : surface.r);
           const planar = !Number.isFinite(r) || Math.abs(r) > 1e12;
           return function (x, y) {
             const rho2 = x * x + y * y;

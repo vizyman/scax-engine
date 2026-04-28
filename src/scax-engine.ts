@@ -27,15 +27,15 @@ import Surface from "./surfaces/surface";
 import DegToTABO from "./utils/deg-to-tabo";
 import TABOToDeg from "./utils/tabo-to-deg";
 
-type EyeModel = "gullstrand" | "navarro";
-type PupilType = "constricted" | "neutral" | "dilated";
+export type EyeModel = "gullstrand" | "navarro";
+export type PupilType = "constricted" | "neutral" | "dilated";
 
-type LightSourceConfig =
+export type LightSourceConfig =
   | ({ type: "radial" } & RadialLightSourceProps)
   | ({ type: "grid" } & GridLightSourceProps)
   | ({ type: "grid_rg" } & GridRGLightSourceProps);
 
-type LensConfig = {
+export type LensConfig = {
   s: number;
   c: number;
   ax: number;
@@ -43,25 +43,29 @@ type LensConfig = {
   tilt: { x: number; y: number };
 };
 
+export type EyePowerInput = { s: number; c: number; ax: number };
+
 export type SCAXEngineProps = {
   eyeModel?: EyeModel;
-  eye?: { s: number, c: number, ax: number };
+  eye?: EyePowerInput;
   lens?: LensConfig[];
   light_source?: LightSourceConfig;
   pupil_type?: PupilType;
 };
 
-type SimulateResult = {
-  traced_rays: Ray[];
-  induced_astigmatism: InducedAstigmatismSummary;
-};
+export type SCAxPower = { s: number; c: number; ax: number };
 
-type SCAxPower = { s: number, c: number, ax: number };
-type InducedAstigmatism = { d: number, tabo_deg: number };
-type InducedAstigmatismSummary = {
+export type InducedAstigmatism = { d: number; tabo_deg: number };
+
+export type InducedAstigmatismSummary = {
   induced: InducedAstigmatism | null;
   eye: InducedAstigmatism | null;
   lens: InducedAstigmatism | null;
+};
+
+export type SimulateResult = {
+  traced_rays: Ray[];
+  induced_astigmatism: InducedAstigmatismSummary;
 };
 
 /**

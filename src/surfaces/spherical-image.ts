@@ -5,7 +5,7 @@ import Surface from "./surface";
 export type SphericalImageSurfaceProps = {
   type: "spherical-image";
   name: string;
-  radius: number;
+  r: number;
   position: { x: number, y: number, z: number };
   tilt: { x: number, y: number };
   retina_extra_after: boolean;
@@ -16,13 +16,13 @@ export type SphericalImageSurfaceProps = {
  * 망막 위치를 표현하는 데 사용됩니다.
  */
 export default class SphericalImageSurface extends Surface {
-  private radius: number = 0;
+  private r: number = 0;
   private retina_extra_after: boolean = true;
   private hitPoints: Vector3[] = [];
   constructor(props: SphericalImageSurfaceProps) {
     super({ type: "spherical-image", name: props.name, position: props.position, tilt: props.tilt });
-    const { radius, retina_extra_after = true } = props;
-    this.radius = radius;
+    const { r, retina_extra_after = true } = props;
+    this.r = r;
     this.retina_extra_after = retina_extra_after;
   }
 
@@ -30,14 +30,14 @@ export default class SphericalImageSurface extends Surface {
    * 반경 값이 비정상이면 평면(z = position.z)으로 처리합니다.
    */
   private isPlanar() {
-    return !Number.isFinite(this.radius) || Math.abs(this.radius) > 1e12;
+    return !Number.isFinite(this.r) || Math.abs(this.r) > 1e12;
   }
 
   /**
    * 구면 중심: 꼭지점(position)에서 반경만큼 z축 이동한 점
    */
   private sphereCenter() {
-    return new Vector3(this.position.x, this.position.y, this.position.z + this.radius);
+    return new Vector3(this.position.x, this.position.y, this.position.z + this.r);
   }
 
   getHitPoints() {
@@ -70,7 +70,7 @@ export default class SphericalImageSurface extends Surface {
     const center = this.sphereCenter();
     const oc = origin.clone().sub(center);
     const b = 2 * direction.dot(oc);
-    const c = oc.lengthSq() - this.radius * this.radius;
+    const c = oc.lengthSq() - this.r * this.r;
     const discriminant = b * b - 4 * c;
     if (discriminant < 0) return null;
 

@@ -1,4 +1,4 @@
-import { AsphericalSurface } from "../../surfaces/aspherical-surface";
+import AsphericalSurface from "../../surfaces/aspherical-surface";
 import SphericalImageSurface from "../../surfaces/spherical-image";
 import SphericalSurface from "../../surfaces/spherical-surface";
 import Surface from "../../surfaces/surface";
@@ -74,7 +74,7 @@ export class EyeModelParameter {
         return new SphericalImageSurface({
           type: "spherical-image",
           name: surface.name,
-          radius: surface.radius,
+          r: surface.radius,
           position: { x: 0, y: 0, z: surface.z },
           tilt: { x: 0, y: 0 },
           retina_extra_after: true,

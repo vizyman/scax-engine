@@ -1,16 +1,16 @@
 import { Vector3 } from "three";
 import {
-  EYE_ST_SURFACE_OFFSET_MM,
-  RAY_SURFACE_ESCAPE_MM,
-  ST_DEFAULT_THICKNESS_MM,
-  ST_POWER_EPS_D,
-} from "../parameters/constants";
-import {
   FraunhoferLine,
   normalizeRefractiveIndexSpec,
   RefractiveIndexSpec,
   resolveRefractiveIndex,
 } from "../optics/refractive-index";
+import {
+  EYE_ST_SURFACE_OFFSET_MM,
+  RAY_SURFACE_ESCAPE_MM,
+  ST_DEFAULT_THICKNESS_MM,
+  ST_POWER_EPS_D,
+} from "../parameters/constants";
 import Ray from "../ray/ray";
 import SphericalSurface, { SphericalSurfaceProps } from "./spherical-surface";
 import Surface from "./surface";

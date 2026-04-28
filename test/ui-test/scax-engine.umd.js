@@ -6870,14 +6870,97 @@
      */
     const FRAUNHOFER_REFRACTIVE_INDICES = {
         air: {
-            d: 1},
+            F: 1,
+            e: 1,
+            d: 1,
+            C: 1,
+        },
         // bk-7
         crown_glass: {
-            d: 1.516800},
+            g: 1.526684, // 435.84 nm
+            F: 1.522379, // 486.10 nm
+            e: 1.518722, // 546.07 nm
+            d: 1.516800, // 587.56 nm
+            C: 1.514322, // 656.27 nm
+            r: 1.512892, // 706.52 nm
+        },
+        // 저굴절 CR-39 계열
+        plastic_150: {
+            F: 1.50738,
+            e: 1.50200,
+            d: 1.50000,
+            C: 1.49860,
+        },
+        // 중굴절 MR-8 계열
+        plastic_160: {
+            F: 1.61800,
+            e: 1.60720,
+            d: 1.60000,
+            C: 1.59430,
+        },
+        // 고굴절 MR-174
+        plastic_167: {
+            F: 1.68600,
+            e: 1.67300,
+            d: 1.67000,
+            C: 1.66200,
+        },
+        // 초고굴절 MR-174
+        plastic_174: {
+            F: 1.76100,
+            e: 1.74800,
+            d: 1.74000,
+            C: 1.73200,
+        },
         cornea: {
-            d: 1.376},
+            F: 1.377468,
+            e: 1.376502,
+            d: 1.376,
+            C: 1.375368,
+        },
         aqueous: {
-            d: 1.336}};
+            F: 1.337312,
+            e: 1.336449,
+            d: 1.336,
+            C: 1.335435,
+        },
+        vitreous: {
+            F: 1.337312,
+            e: 1.336449,
+            d: 1.336,
+            C: 1.335435,
+        },
+        lens: {
+            F: 1.407585,
+            e: 1.406542,
+            d: 1.406,
+            C: 1.405318,
+        },
+        lens_anterior: {
+            F: 1.387507,
+            e: 1.386516,
+            d: 1.386,
+            C: 1.385351,
+        },
+        lens_nucleus_anterior: {
+            F: 1.407585,
+            e: 1.406542,
+            d: 1.406,
+            C: 1.405318,
+        },
+        lens_nucleus_posterior: {
+            F: 1.387507,
+            e: 1.386516,
+            d: 1.386,
+            C: 1.385351,
+        },
+        lens_posterior: {
+            F: 1.337312,
+            e: 1.336449,
+            d: 1.336,
+            C: 1.335435,
+        },
+    };
     /**
      * 동공 크기
      */
@@ -7116,8 +7199,6 @@
             this.division = 0;
             this.z = 0;
             this.vergence = 0;
-            this.greenVergenceOffset = 1.0;
-            this.redVergenceOffset = -3;
             this.width = width;
             this.height = height;
             this.division = division;
@@ -7132,8 +7213,8 @@
                 for (let xi = 0; xi < this.division; xi += 1) {
                     const x = xStart + xi * xStep;
                     const origin = new Vector3(x, y, this.z);
-                    this.createChromaticRayFromPoint(origin, this.z, this.vergence, "e", this.greenVergenceOffset);
-                    this.createChromaticRayFromPoint(origin, this.z, this.vergence, "C", this.redVergenceOffset);
+                    this.createChromaticRayFromPoint(origin, this.z, this.vergence, "e");
+                    this.createChromaticRayFromPoint(origin, this.z, this.vergence, "C");
                 }
             }
         }
@@ -7178,6 +7259,28 @@
         }
     }
 
+    function isFiniteNumber(value) {
+        return typeof value === "number" && Number.isFinite(value);
+    }
+    function resolveRefractiveIndex(spec, line) {
+        if (isFiniteNumber(spec))
+            return spec;
+        const lineValue = spec[line];
+        if (isFiniteNumber(lineValue))
+            return lineValue;
+        const dValue = spec.d;
+        if (isFiniteNumber(dValue))
+            return dValue;
+        return 1.0;
+    }
+    function normalizeRefractiveIndexSpec(spec) {
+        if (!isFiniteNumber(spec))
+            return spec;
+        const entries = Object.values(FRAUNHOFER_REFRACTIVE_INDICES);
+        const matched = entries.find((item) => isFiniteNumber(item.d) && Math.abs(item.d - spec) < 1e-6);
+        return matched ?? spec;
+    }
+
     class Surface {
         constructor(props) {
             this.type = "";
@@ -7200,13 +7303,20 @@
             super({ type: "aspherical", name: props.name, position: props.position, tilt: props.tilt });
             this.r = 0;
             this.conic = 0;
-            this.n_before = 0;
-            this.n_after = 0;
+            this.n_before = 1.0;
+            this.n_after = 1.0;
             const { r, conic = -1, n_before = 1.0, n_after = 1.0 } = props;
             this.r = r;
             this.conic = conic;
-            this.n_before = n_before;
-            this.n_after = n_after;
+            this.n_before = normalizeRefractiveIndexSpec(n_before);
+            this.n_after = normalizeRefractiveIndexSpec(n_after);
+        }
+        refractiveIndicesForRay(ray) {
+            const line = ray.getFraunhoferLine();
+            return {
+                nBefore: resolveRefractiveIndex(this.n_before, line),
+                nAfter: resolveRefractiveIndex(this.n_after, line),
+            };
         }
         /**
          * 비구면 사그(sag)와 그 기울기(미분)를 계산합니다.
@@ -7399,7 +7509,8 @@
             }
             const cos1 = Math.max(-1, Math.min(1, normalIntoSecond.dot(incidentDir)));
             const sin1Sq = Math.max(0, 1 - cos1 * cos1);
-            const sin2 = (this.n_before / this.n_after) * Math.sqrt(sin1Sq);
+            const { nBefore, nAfter } = this.refractiveIndicesForRay(ray);
+            const sin2 = (nBefore / nAfter) * Math.sqrt(sin1Sq);
             // 전반사(TIR)
             if (sin2 > 1 + 1e-10)
                 return null;
@@ -7438,24 +7549,24 @@
     class SphericalImageSurface extends Surface {
         constructor(props) {
             super({ type: "spherical-image", name: props.name, position: props.position, tilt: props.tilt });
-            this.radius = 0;
+            this.r = 0;
             this.retina_extra_after = true;
             this.hitPoints = [];
-            const { radius, retina_extra_after = true } = props;
-            this.radius = radius;
+            const { r, retina_extra_after = true } = props;
+            this.r = r;
             this.retina_extra_after = retina_extra_after;
         }
         /**
          * 반경 값이 비정상이면 평면(z = position.z)으로 처리합니다.
          */
         isPlanar() {
-            return !Number.isFinite(this.radius) || Math.abs(this.radius) > 1e12;
+            return !Number.isFinite(this.r) || Math.abs(this.r) > 1e12;
         }
         /**
          * 구면 중심: 꼭지점(position)에서 반경만큼 z축 이동한 점
          */
         sphereCenter() {
-            return new Vector3(this.position.x, this.position.y, this.position.z + this.radius);
+            return new Vector3(this.position.x, this.position.y, this.position.z + this.r);
         }
         getHitPoints() {
             return this.hitPoints.map((point) => point.clone());
@@ -7483,7 +7594,7 @@
             const center = this.sphereCenter();
             const oc = origin.clone().sub(center);
             const b = 2 * direction.dot(oc);
-            const c = oc.lengthSq() - this.radius * this.radius;
+            const c = oc.lengthSq() - this.r * this.r;
             const discriminant = b * b - 4 * c;
             if (discriminant < 0)
                 return null;
@@ -7524,12 +7635,19 @@
         constructor(props) {
             super({ type: "spherical", name: props.name, position: props.position, tilt: props.tilt });
             this.r = 0;
-            this.n_before = 0;
-            this.n_after = 0;
+            this.n_before = 1.0;
+            this.n_after = 1.0;
             const { r, n_before = 1.0, n_after = 1.0 } = props;
             this.r = r;
-            this.n_before = n_before;
-            this.n_after = n_after;
+            this.n_before = normalizeRefractiveIndexSpec(n_before);
+            this.n_after = normalizeRefractiveIndexSpec(n_after);
+        }
+        refractiveIndicesForRay(ray) {
+            const line = ray.getFraunhoferLine();
+            return {
+                nBefore: resolveRefractiveIndex(this.n_before, line),
+                nAfter: resolveRefractiveIndex(this.n_after, line),
+            };
         }
         /**
          * 반경이 너무 크거나 비정상 값이면 평면으로 간주합니다.
@@ -7658,7 +7776,8 @@
             }
             const cos1 = Math.max(-1, Math.min(1, normal.dot(incidentDir)));
             const sin1Sq = Math.max(0, 1 - cos1 * cos1);
-            const sin2 = (this.n_before / this.n_after) * Math.sqrt(sin1Sq);
+            const { nBefore, nAfter } = this.refractiveIndicesForRay(ray);
+            const sin2 = (nBefore / nAfter) * Math.sqrt(sin1Sq);
             // 전반사(TIR)
             if (sin2 > 1 + 1e-10)
                 return null;
@@ -7712,7 +7831,7 @@
                     return new SphericalImageSurface({
                         type: "spherical-image",
                         name: surface.name,
-                        radius: surface.radius,
+                        r: surface.radius,
                         position: { x: 0, y: 0, z: surface.z },
                         tilt: { x: 0, y: 0 },
                         retina_extra_after: true,
@@ -8136,13 +8255,20 @@
             super({ type: "toric", name: props.name, position: props.position, tilt: props.tilt });
             this.r_axis = 0;
             this.r_perp = 0;
-            this.n_before = 0;
-            this.n_after = 0;
+            this.n_before = 1.0;
+            this.n_after = 1.0;
             const { r_axis, r_perp, n_before = 1.0, n_after = 1.0 } = props;
             this.r_axis = r_axis;
             this.r_perp = r_perp;
-            this.n_before = n_before;
-            this.n_after = n_after;
+            this.n_before = normalizeRefractiveIndexSpec(n_before);
+            this.n_after = normalizeRefractiveIndexSpec(n_after);
+        }
+        refractiveIndicesForRay(ray) {
+            const line = ray.getFraunhoferLine();
+            return {
+                nBefore: resolveRefractiveIndex(this.n_before, line),
+                nAfter: resolveRefractiveIndex(this.n_after, line),
+            };
         }
         /**
          * Toric 면의 축(meridian) 회전을 위해 사용하는 삼각함수 값입니다.
@@ -8280,7 +8406,8 @@
             }
             const cos1 = Math.max(-1, Math.min(1, normalIntoSecond.dot(incidentDir)));
             const sin1Sq = Math.max(0, 1 - cos1 * cos1);
-            const sin2 = (this.n_before / this.n_after) * Math.sqrt(sin1Sq);
+            const { nBefore, nAfter } = this.refractiveIndicesForRay(ray);
+            const sin2 = (nBefore / nAfter) * Math.sqrt(sin1Sq);
             // 전반사(TIR)
             if (sin2 > 1 + 1e-10)
                 return null;
@@ -8307,9 +8434,9 @@
             this.s = 0;
             this.c = 0;
             this.ax = 0;
-            this.n_before = 0;
-            this.n = 0;
-            this.n_after = 0;
+            this.n_before = 1.0;
+            this.n = 1.0;
+            this.n_after = 1.0;
             this.thickness = 0;
             this.frontRadiusMm = Number.POSITIVE_INFINITY;
             this.backRadiusPerpMm = Number.POSITIVE_INFINITY;
@@ -8317,11 +8444,11 @@
             this.s = s;
             this.c = c;
             this.ax = ax;
-            this.n_before = n_before;
-            this.n = n;
-            this.n_after = n_after;
-            this.frontRadiusMm = this.radiusFromPower(this.s, this.n_before, this.n);
-            this.backRadiusPerpMm = this.radiusFromPower(this.c, this.n, this.n_after);
+            this.n_before = normalizeRefractiveIndexSpec(n_before);
+            this.n = normalizeRefractiveIndexSpec(n);
+            this.n_after = normalizeRefractiveIndexSpec(n_after);
+            this.frontRadiusMm = this.radiusFromPower(this.s, this.refractiveIndexAtD(this.n_before), this.refractiveIndexAtD(this.n));
+            this.backRadiusPerpMm = this.radiusFromPower(this.c, this.refractiveIndexAtD(this.n), this.refractiveIndexAtD(this.n_after));
             const requestedThickness = Math.max(0, thickness);
             this.thickness = requestedThickness === 0
                 ? this.optimizeThickness(0)
@@ -8348,6 +8475,9 @@
             if (Math.abs(powerD) < ST_POWER_EPS_D)
                 return Number.POSITIVE_INFINITY;
             return (1000 * (nAfter - nBefore)) / powerD;
+        }
+        refractiveIndexAtD(spec) {
+            return resolveRefractiveIndex(spec, "d");
         }
         /**
          * ST 전면: 구면(sphere) 성분
@@ -8390,6 +8520,23 @@
                 n_after: this.n,
             };
             return new ToricSurface(backProps);
+        }
+        applyChromaticIndicesToSubSurfaces(ray) {
+            const line = ray.getFraunhoferLine();
+            const nBefore = resolveRefractiveIndex(this.n_before, line);
+            const n = resolveRefractiveIndex(this.n, line);
+            const nAfter = resolveRefractiveIndex(this.n_after, line);
+            const frontState = this.front;
+            if (this.back) {
+                frontState.n_before = n;
+                frontState.n_after = nAfter;
+                const backState = this.back;
+                backState.n_before = nBefore;
+                backState.n_after = n;
+                return;
+            }
+            frontState.n_before = nBefore;
+            frontState.n_after = n;
         }
         /**
          * 전면/후면 곡면의 z 교차(후면이 전면을 관통) 방지를 위해
@@ -8484,6 +8631,7 @@
             return a / den;
         }
         refract(ray) {
+            this.applyChromaticIndicesToSubSurfaces(ray);
             // 원통 성분이 없으면 단일(구면)면으로 처리합니다.
             if (!this.back) {
                 const single = this.front.refract(ray);
@@ -8541,6 +8689,20 @@
             this.tracedRays = [];
             this.lastSturmGapAnalysis = null;
             this.lastAffineAnalysis = null;
+            this.sturm = new Sturm();
+            this.affine = new Affine();
+            this.configure(props);
+        }
+        /**
+         * 생성자와 동일한 기본값 규칙으로 광학 설정을 다시 적용합니다.
+         * 생략한 최상위 필드는 매번 기본값으로 돌아갑니다(이전 값과 병합하지 않음).
+         */
+        update(props = {}) {
+            this.configure(props);
+        }
+        configure(props = {}) {
+            this.lastSturmGapAnalysis = null;
+            this.lastAffineAnalysis = null;
             const { eyeModel = "gullstrand", eye = { s: 0, c: 0, ax: 0 }, lens = [], light_source = { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 }, pupil_type = "neutral", } = props;
             this.eyeModel = eyeModel;
             const normalizedEyeSphere = Number(eye?.s ?? 0) + (eyeModel === "gullstrand" ? -1 : 0);
@@ -8581,9 +8743,9 @@
                 s: this.eyePower.s,
                 c: this.eyePower.c,
                 ax: this.eyePower.ax,
-                n_before: FRAUNHOFER_REFRACTIVE_INDICES.air.d,
-                n: FRAUNHOFER_REFRACTIVE_INDICES.cornea.d,
-                n_after: FRAUNHOFER_REFRACTIVE_INDICES.aqueous.d,
+                n_before: FRAUNHOFER_REFRACTIVE_INDICES.air,
+                n: FRAUNHOFER_REFRACTIVE_INDICES.cornea,
+                n_after: FRAUNHOFER_REFRACTIVE_INDICES.aqueous,
             });
             this.surfaces = [eyeSt, ...this.eyeModelParameter.createSurface()];
             this.hasPupilStop = false;
@@ -8616,12 +8778,10 @@
                 s: Number(spec?.s ?? 0),
                 c: Number(spec?.c ?? 0),
                 ax: Number(spec?.ax ?? 0),
-                n_before: FRAUNHOFER_REFRACTIVE_INDICES.air.d,
-                n: FRAUNHOFER_REFRACTIVE_INDICES.crown_glass.d,
-                n_after: FRAUNHOFER_REFRACTIVE_INDICES.air.d,
+                n_before: FRAUNHOFER_REFRACTIVE_INDICES.air,
+                n: FRAUNHOFER_REFRACTIVE_INDICES.crown_glass,
+                n_after: FRAUNHOFER_REFRACTIVE_INDICES.air,
             }));
-            this.sturm = new Sturm();
-            this.affine = new Affine();
             this.light_source = light_source.type === "radial"
                 ? new RadialLightSource(light_source)
                 : light_source.type === "grid_rg"
@@ -8795,6 +8955,7 @@
         }
     }
 
+    exports.Ray = Ray;
     exports.SCAXEngine = SCAXEngine;
 
 }));

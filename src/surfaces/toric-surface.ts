@@ -1,5 +1,11 @@
 import { Vector3 } from "three";
 import {
+  FraunhoferLine,
+  normalizeRefractiveIndexSpec,
+  RefractiveIndexSpec,
+  resolveRefractiveIndex,
+} from "../optics/refractive-index";
+import {
   EPSILON,
   RAY_SURFACE_ESCAPE_MM,
   TORIC_COINCIDENT_SURFACE_TOL_MM,
@@ -7,12 +13,6 @@ import {
   TORIC_MIN_T_MM,
   TORIC_ON_SURFACE_TOL_MM,
 } from "../parameters/constants";
-import {
-  FraunhoferLine,
-  normalizeRefractiveIndexSpec,
-  RefractiveIndexSpec,
-  resolveRefractiveIndex,
-} from "../optics/refractive-index";
 import Ray from "../ray/ray";
 import Surface from "./surface";
 

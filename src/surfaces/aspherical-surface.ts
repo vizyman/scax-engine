@@ -1,11 +1,11 @@
 import { Vector3 } from "three";
-import { EPSILON, RAY_SURFACE_ESCAPE_MM } from "../parameters/constants";
 import {
   FraunhoferLine,
   normalizeRefractiveIndexSpec,
   RefractiveIndexSpec,
   resolveRefractiveIndex,
 } from "../optics/refractive-index";
+import { EPSILON, RAY_SURFACE_ESCAPE_MM } from "../parameters/constants";
 import Ray from "../ray/ray";
 import Surface from "./surface";
 
@@ -20,7 +20,7 @@ export type AsphericalSurfaceProps = {
   n_after: RefractiveIndexSpec;
 }
 
-export class AsphericalSurface extends Surface {
+export default class AsphericalSurface extends Surface {
   /**
    * 수치 계산 상수들
    * - MIN_T: 현재 시작점과의 자기 재교차를 피하기 위한 최소 진행 거리
