@@ -81,7 +81,7 @@
     <div id="affine-panel">Affine: Loading...</div>
   </div>
 
-  <script src="./scax-engine.umd.js"></script>
+  <script src="../../dist/scax-engine.umd.js"></script>
   <script type="module">
     import * as THREE from "three";
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -205,7 +205,7 @@
         spectacleAx: toNumberParam("specAx", 180),
         spectaclePosX: toNumberParam("specPosX", 0),
         spectaclePosY: toNumberParam("specPosY", 0),
-        spectaclePosZ: SPECTACLE_VD_Z_MM,
+        spectaclePosZ: toNumberParam("specPosZ", SPECTACLE_VD_Z_MM),
         spectacleTiltX: toNumberParam("specTiltX", 0),
         spectacleTiltY: toNumberParam("specTiltY", 0),
         crossCylinderEnabled: toBooleanParam("xcylOn", false),
@@ -234,7 +234,7 @@
             position: {
               x: Number(state.spectaclePosX),
               y: Number(state.spectaclePosY),
-              z: SPECTACLE_VD_Z_MM,
+              z: Number(state.spectaclePosZ),
             },
             tilt: {
               x: Number(state.spectacleTiltX),
@@ -344,7 +344,7 @@
       specFolder.add(uiState, "spectacleAx", 0, 180, 1).name("Spec Axis").onFinishChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectaclePosX", -20, 20, 0.1).name("Spec Pos X (mm)").onFinishChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectaclePosY", -20, 20, 0.1).name("Spec Pos Y (mm)").onFinishChange(requestSimulationRefresh);
-      specFolder.add(uiState, "spectaclePosZ").name("Spec Pos Z (mm, fixed VD)");
+      specFolder.add(uiState, "spectaclePosZ", -80, 20, 0.1).name("Spec Pos Z (mm)").onFinishChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectacleTiltX", -30, 30, 0.1).name("Spec Tilt X (deg)").onFinishChange(requestSimulationRefresh);
       specFolder.add(uiState, "spectacleTiltY", -30, 30, 0.1).name("Spec Tilt Y (deg)").onFinishChange(requestSimulationRefresh);
 
