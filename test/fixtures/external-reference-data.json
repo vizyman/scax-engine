@@ -1,0 +1,219 @@
+{
+  "metadata": {
+    "title": "Semi-external Reference Dataset (Analytic)",
+    "description": "Ground truth derived from optical identities and power-vector algebra (J0/J45), used as a semi-external baseline before simulator/bench datasets are available."
+  },
+  "cases": [
+    {
+      "id": "gullstrand-emmetrope-retina-alignment",
+      "source": "eye model design baseline (retina position)",
+      "eyeModel": "gullstrand",
+      "eye": { "s": 0, "c": 0, "ax": 0 },
+      "lens": [],
+      "expected": {
+        "d_line_center_z_mm": 24
+      },
+      "tolerance": {
+        "d_line_center_z_mm": 1.0
+      }
+    },
+    {
+      "id": "navarro-emmetrope-retina-alignment",
+      "source": "eye model design baseline (retina position)",
+      "eyeModel": "navarro",
+      "eye": { "s": 0, "c": 0, "ax": 0 },
+      "lens": [],
+      "expected": {
+        "d_line_center_z_mm": 24.04
+      },
+      "tolerance": {
+        "d_line_center_z_mm": 1.0
+      }
+    },
+    {
+      "id": "single-cylinder-minus-1p5-at-40",
+      "source": "power-vector identity for single cylinder",
+      "eyeModel": "navarro",
+      "eye": { "s": 0, "c": -1.5, "ax": 40 },
+      "lens": [],
+      "expected": {
+        "induced_astigmatism": {
+          "d": 1.5,
+          "tabo_deg": 40
+        }
+      },
+      "tolerance": {
+        "induced_d": 0.001,
+        "induced_axis_deg": 0.001
+      }
+    },
+    {
+      "id": "single-cylinder-minus-2-at-0",
+      "source": "power-vector identity for single cylinder",
+      "eyeModel": "gullstrand",
+      "eye": { "s": 0, "c": -2, "ax": 0 },
+      "lens": [],
+      "expected": {
+        "induced_astigmatism": {
+          "d": 2,
+          "tabo_deg": 0
+        }
+      },
+      "tolerance": {
+        "induced_d": 0.001,
+        "induced_axis_deg": 0.001
+      }
+    },
+    {
+      "id": "single-cylinder-minus-2-at-90",
+      "source": "power-vector identity for single cylinder",
+      "eyeModel": "gullstrand",
+      "eye": { "s": 0, "c": -2, "ax": 90 },
+      "lens": [],
+      "expected": {
+        "induced_astigmatism": {
+          "d": 2,
+          "tabo_deg": 90
+        }
+      },
+      "tolerance": {
+        "induced_d": 0.001,
+        "induced_axis_deg": 0.001
+      }
+    },
+    {
+      "id": "single-cylinder-plus-2-at-90-equivalent-minus-axis-shift",
+      "source": "plus/minus cylinder equivalence via power-vector",
+      "eyeModel": "navarro",
+      "eye": { "s": 0, "c": 2, "ax": 90 },
+      "lens": [],
+      "expected": {
+        "induced_astigmatism": {
+          "d": 2,
+          "tabo_deg": 0
+        }
+      },
+      "tolerance": {
+        "induced_d": 0.001,
+        "induced_axis_deg": 0.001
+      }
+    },
+    {
+      "id": "coaxial-minus-cylinders-add-magnitude",
+      "source": "J0/J45 linear superposition",
+      "eyeModel": "gullstrand",
+      "eye": { "s": 0, "c": -1, "ax": 0 },
+      "lens": [
+        { "s": 0, "c": -0.5, "ax": 0 }
+      ],
+      "expected": {
+        "induced_astigmatism": {
+          "d": 1.5,
+          "tabo_deg": 0
+        }
+      },
+      "tolerance": {
+        "induced_d": 0.001,
+        "induced_axis_deg": 0.001
+      }
+    },
+    {
+      "id": "orthogonal-equal-cylinders-cancel-0-90",
+      "source": "J0/J45 cancellation for orthogonal equal cylinders",
+      "eyeModel": "gullstrand",
+      "eye": { "s": 0, "c": -1, "ax": 0 },
+      "lens": [
+        { "s": 0, "c": -1, "ax": 90 }
+      ],
+      "expected": {
+        "induced_astigmatism_null": true
+      },
+      "tolerance": {}
+    },
+    {
+      "id": "orthogonal-equal-cylinders-cancel-45-135",
+      "source": "J0/J45 cancellation for orthogonal equal cylinders",
+      "eyeModel": "navarro",
+      "eye": { "s": 0, "c": -2, "ax": 45 },
+      "lens": [
+        { "s": 0, "c": -2, "ax": 135 }
+      ],
+      "expected": {
+        "induced_astigmatism_null": true
+      },
+      "tolerance": {}
+    },
+    {
+      "id": "coaxial-minus-cylinders-add-at-20",
+      "source": "J0/J45 linear superposition",
+      "eyeModel": "navarro",
+      "eye": { "s": 0, "c": -2, "ax": 20 },
+      "lens": [
+        { "s": 0, "c": -1, "ax": 20 }
+      ],
+      "expected": {
+        "induced_astigmatism": {
+          "d": 3,
+          "tabo_deg": 20
+        }
+      },
+      "tolerance": {
+        "induced_d": 0.001,
+        "induced_axis_deg": 0.001
+      }
+    },
+    {
+      "id": "coaxial-opposite-sign-cylinders-subtract-at-20",
+      "source": "J0/J45 linear superposition",
+      "eyeModel": "gullstrand",
+      "eye": { "s": 0, "c": -2, "ax": 20 },
+      "lens": [
+        { "s": 0, "c": 1, "ax": 20 }
+      ],
+      "expected": {
+        "induced_astigmatism": {
+          "d": 1,
+          "tabo_deg": 20
+        }
+      },
+      "tolerance": {
+        "induced_d": 0.001,
+        "induced_axis_deg": 0.001
+      }
+    },
+    {
+      "id": "axis-periodicity-10deg",
+      "source": "axis periodicity: TABO a == a+180",
+      "eyeModel": "navarro",
+      "eye": { "s": 0, "c": -1.25, "ax": 10 },
+      "lens": [],
+      "expected": {
+        "induced_astigmatism": {
+          "d": 1.25,
+          "tabo_deg": 10
+        }
+      },
+      "tolerance": {
+        "induced_d": 0.001,
+        "induced_axis_deg": 0.001
+      }
+    },
+    {
+      "id": "axis-periodicity-190deg",
+      "source": "axis periodicity: TABO a == a+180",
+      "eyeModel": "navarro",
+      "eye": { "s": 0, "c": -1.25, "ax": 190 },
+      "lens": [],
+      "expected": {
+        "induced_astigmatism": {
+          "d": 1.25,
+          "tabo_deg": 10
+        }
+      },
+      "tolerance": {
+        "induced_d": 0.001,
+        "induced_axis_deg": 0.001
+      }
+    }
+  ]
+}

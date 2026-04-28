@@ -187,7 +187,7 @@
         eyeS: toNumberParam("eyeS", 0.0),
         eyeC: toNumberParam("eyeC", 0.0),
         eyeAx: toNumberParam("eyeAx", 180),
-        lightSourceType: (function () {
+        lightSourceType: (function () {ㅅ
           const value = String(searchParams.get("lsType") || "grid");
           if (value === "radial" || value === "grid_rg") return value;
           return "grid";
