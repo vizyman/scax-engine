@@ -15,6 +15,7 @@ import {
   PUPIL_SIZE,
   RAY_SURFACE_ESCAPE_MM,
   SPECTACLE_VERTEX_DISTANCE_MM,
+  ST_POWER_EPS_D,
 } from "./parameters/constants";
 import { EyeModelParameter } from "./parameters/eye/eyemodel-parameter";
 import { GullstrandParameter } from "./parameters/eye/gullstrand-parameter";
@@ -28,7 +29,7 @@ import DegToTABO from "./utils/deg-to-tabo";
 import TABOToDeg from "./utils/tabo-to-deg";
 
 export type EyeModel = "gullstrand" | "navarro";
-export type PupilType = "constricted" | "neutral" | "dilated";
+export type PupilType = "constricted" | "neutral" | "dilated" | "none";
 
 export type LightSourceTransform = {
   position?: { x?: number; y?: number; z?: number };
@@ -277,22 +278,30 @@ export default class SCAXEngine {
       const v = this.prismVectorFromBase(spec.p ?? 0, spec.p_ax ?? 0);
       return { x: acc.x + v.x, y: acc.y + v.y };
     }, { x: 0, y: 0 });
-    this.pupilDiameterMm = Number(PUPIL_SIZE[pupil_type]);
+    // "none"은 동공 제한을 완전히 비활성화합니다.
+    this.pupilDiameterMm = pupil_type === "none" ? 0 : Number(PUPIL_SIZE[pupil_type]);
     this.eyeModelParameter = eyeModel === "gullstrand" ? new GullstrandParameter() : new NavarroParameter();
-    const eyeSt = new STSurface({
-      type: "compound",
-      name: "eye_st",
-      position: { x: 0, y: 0, z: -EYE_ST_SURFACE_OFFSET_MM },
-      referencePoint: { x: 0, y: 0, z: 0 },
-      tilt: { x: 0, y: 0 },
-      s: this.eyePower.s,
-      c: this.eyePower.c,
-      ax: this.eyePower.ax,
-      n_before: FRAUNHOFER_REFRACTIVE_INDICES.air,
-      n: FRAUNHOFER_REFRACTIVE_INDICES.cornea,
-      n_after: FRAUNHOFER_REFRACTIVE_INDICES.aqueous,
-    });
-    this.surfaces = [eyeSt, ...this.eyeModelParameter.createSurface()];
+    const hasEyeCompensationPower = (
+      Math.abs(Number(this.eyePower.s) || 0) >= ST_POWER_EPS_D
+      || Math.abs(Number(this.eyePower.c) || 0) >= ST_POWER_EPS_D
+    );
+    this.surfaces = this.eyeModelParameter.createSurface();
+    if (hasEyeCompensationPower) {
+      const eyeSt = new STSurface({
+        type: "compound",
+        name: "eye_st",
+        position: { x: 0, y: 0, z: -EYE_ST_SURFACE_OFFSET_MM },
+        referencePoint: { x: 0, y: 0, z: 0 },
+        tilt: { x: 0, y: 0 },
+        s: this.eyePower.s,
+        c: this.eyePower.c,
+        ax: this.eyePower.ax,
+        n_before: FRAUNHOFER_REFRACTIVE_INDICES.air,
+        n: FRAUNHOFER_REFRACTIVE_INDICES.cornea,
+        n_after: FRAUNHOFER_REFRACTIVE_INDICES.aqueous,
+      });
+      this.surfaces = [eyeSt, ...this.surfaces];
+    }
     this.hasPupilStop = false;
     if (Number.isFinite(this.pupilDiameterMm) && (this.pupilDiameterMm as number) > 0) {
       const pupilStop = new ApertureStopSurface({

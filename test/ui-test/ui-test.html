@@ -213,6 +213,11 @@
 
       const uiState = {
         eyeModel: (searchParams.get("eyeModel") === "gullstrand" ? "gullstrand" : "navarro"),
+        pupilType: (function () {
+          const value = String(searchParams.get("pupilType") || "neutral");
+          if (value === "constricted" || value === "dilated" || value === "none") return value;
+          return "neutral";
+        })(),
         eyeS: toNumberParam("eyeS", 0.0),
         eyeC: toNumberParam("eyeC", 0.0),
         eyeAx: toNumberParam("eyeAx", 180),
@@ -347,6 +352,7 @@
       function syncUrlWithState() {
         const params = new URLSearchParams();
         params.set("eyeModel", String(uiState.eyeModel));
+        params.set("pupilType", String(uiState.pupilType));
         params.set("eyeS", String(uiState.eyeS));
         params.set("eyeC", String(uiState.eyeC));
         params.set("eyeAx", String(uiState.eyeAx));
@@ -394,8 +400,124 @@
       }
 
       const gui = new GUI({ title: "SCAX Test Controls", width: 320 });
+      function refreshAllGuiControllers() {
+        if (typeof gui.controllersRecursive === "function") {
+          gui.controllersRecursive().forEach(function (controller) {
+            if (controller && typeof controller.updateDisplay === "function") {
+              controller.updateDisplay();
+            }
+          });
+        }
+      }
+      function applyPreset(presetValues) {
+        Object.keys(presetValues || {}).forEach(function (key) {
+          if (Object.prototype.hasOwnProperty.call(uiState, key)) {
+            uiState[key] = presetValues[key];
+          }
+        });
+        refreshAllGuiControllers();
+        requestSimulationRefresh();
+      }
+      const presetActions = {
+        // 하방 주시 시 안경 경사각/하강량과 렌즈 중심 법선 입사를 확인하기 위한 프리셋
+        applyDownGazeSpectacleTiltPreset: function () {
+          applyPreset({
+            eyeModel: "navarro",
+            pupilType: "neutral",
+            eyeS: 0.0,
+            eyeC: 0.0,
+            eyeAx: 180,
+            eyeP: 0,
+            eyePAx: 0,
+            // 하방 주시(약 12도)
+            eyeTiltX: -12,
+            eyeTiltY: 0,
+            lightSourceType: "grid",
+            lightWidth: 0.5,
+            lightHeight: 0.5,
+            lightDivision: 7,
+            lightRadius: 0.5,
+            lightAngleDivision: 8,
+            // 렌즈 기준 충분히 먼 거리에서 조사
+            lightZ: -400,
+            lightVergence: 0,
+            lightPosX: 0,
+            // 렌즈가 아래로 내려온 만큼 광원 중심도 같이 이동
+            lightPosY: -2.0,
+            lightPosZ: 0,
+            // 렌즈 정중앙 법선 방향으로 조사
+            lightTiltX: 10.0,
+            lightTiltY: 5.0,
+            spectacleEnabled: true,
+            spectacleS: 0.0,
+            spectacleC: 0.0,
+            spectacleAx: 180,
+            spectacleP: 0,
+            spectaclePAx: 0,
+            spectaclePosX: 0,
+            // 프레임 피팅 하강량(약 2 mm)
+            spectaclePosY: -2.0,
+            spectaclePosZ: SPECTACLE_VD_Z_MM,
+            // 팬토스코픽 + 페이스폼 경사
+            spectacleTiltX: 10.0,
+            spectacleTiltY: 5.0,
+            crossCylinderEnabled: false,
+            crossCylinderAx: 180,
+          });
+        },
+        alignLensAndLightToCurrentGaze: function () {
+          const gazeTiltX = Number(uiState.eyeTiltX) || 0;
+          const gazeTiltY = Number(uiState.eyeTiltY) || 0;
+          const lightDistanceMm = 200;
+          const lightZ = -lightDistanceMm;
+          const lensCenter = new THREE.Vector3(
+            Number(uiState.spectaclePosX) || 0,
+            Number(uiState.spectaclePosY) || 0,
+            Number(uiState.spectaclePosZ) || 0,
+          );
+          const gazeQuat = new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(
+              THREE.MathUtils.degToRad(gazeTiltX),
+              THREE.MathUtils.degToRad(gazeTiltY),
+              0,
+              "XYZ",
+            ),
+          );
+          const gazeDirection = new THREE.Vector3(0, 0, 1).applyQuaternion(gazeQuat).normalize();
+          const sourceWorldCenter = lensCenter.clone().addScaledVector(gazeDirection, -lightDistanceMm);
+          const mirroredSourceWorldCenter = sourceWorldCenter.clone();
+          mirroredSourceWorldCenter.y *= -1;
+          applyPreset({
+            spectacleEnabled: true,
+            // 렌즈 법선이 현재 주시선과 일치하도록 경사 맞춤
+            spectacleTiltX: gazeTiltX,
+            spectacleTiltY: gazeTiltY,
+            // xz 평면(y=0) 대칭: y 성분 반전을 위해 X tilt 부호를 반전
+            lightTiltX: -gazeTiltX,
+            lightTiltY: gazeTiltY,
+            lightVergence: 0,
+            lightZ: lightZ,
+            // world center = (lightPosX, lightPosY, lightPosZ + lightZ)
+            lightPosX: mirroredSourceWorldCenter.x,
+            lightPosY: mirroredSourceWorldCenter.y,
+            lightPosZ: mirroredSourceWorldCenter.z - lightZ,
+          });
+        },
+      };
+      const presetFolder = gui.addFolder("0) Data Presets");
+      presetFolder
+        .add(presetActions, "applyDownGazeSpectacleTiltPreset")
+        .name("Down Gaze + Lens-Normal Light");
+      presetFolder
+        .add(presetActions, "alignLensAndLightToCurrentGaze")
+        .name("Align Lens/Light To Current Gaze");
+      presetFolder.open();
       const modelFolder = gui.addFolder("1) Model");
       modelFolder.add(uiState, "eyeModel", ["gullstrand", "navarro"]).name("Eye Model").onFinishChange(requestSimulationRefresh);
+      modelFolder
+        .add(uiState, "pupilType", ["constricted", "neutral", "dilated", "none"])
+        .name("Pupil Type")
+        .onFinishChange(requestSimulationRefresh);
       modelFolder.open();
 
       const eyeFolder = gui.addFolder("2) Eye Refraction (S/C/Ax + Prism)");
@@ -1012,6 +1134,7 @@
         const hasLens = Array.isArray(lensConfigs) && lensConfigs.length > 0;
         const engine = new ScaxEngine.SCAXEngine({
           eyeModel: uiState.eyeModel,
+          pupil_type: uiState.pupilType,
           eye: {
             s: uiState.eyeS,
             c: uiState.eyeC,
@@ -1423,6 +1546,7 @@
         "SCAX UMD Mesh Render Test\n" +
         "global: window.ScaxEngine.SCAXEngine\n" +
         "config: model=" + uiState.eyeModel +
+        ", pupil=" + uiState.pupilType +
         ", eye=(" + uiState.eyeS + "," + uiState.eyeC + "," + uiState.eyeAx + ")" +
         ", eyePrismBase=(" + uiState.eyeP + "Δ@" + uiState.eyePAx + "°)" +
         ", eyeTilt=(" + uiState.eyeTiltX + "°, " + uiState.eyeTiltY + "°)" +
