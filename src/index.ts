@@ -13,4 +13,5 @@ export type {
   InducedAstigmatism,
   InducedAstigmatismSummary,
   SimulateResult,
+  AffineAnalysisResult,
 } from "./scax-engine";

@@ -148,9 +148,10 @@ export default class STSurface extends Surface {
         y: this.position.y,
         z: this.position.z,
       },
-      tilt: { x: this.tilt.x, y: this.tilt.y + this.ax },
+      tilt: { x: this.tilt.x, y: this.tilt.y },
       r_axis: Number.POSITIVE_INFINITY,
       r_perp: this.backRadiusPerpMm,
+      axis_deg: this.ax,
       n_before: this.n_before,
       n_after: this.n,
     };
@@ -258,7 +259,7 @@ export default class STSurface extends Surface {
    * 토릭 후면의 꼭지점 기준 sag(mm)
    */
   private backSagAtXY(x: number, y: number) {
-    const axisRad = (this.tilt.y + this.ax) * Math.PI / 180;
+    const axisRad = (this.ax * Math.PI) / 180;
     const cAxis = Math.cos(axisRad);
     const sAxis = Math.sin(axisRad);
     const u = cAxis * x + sAxis * y;

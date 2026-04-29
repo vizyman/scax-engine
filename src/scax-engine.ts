@@ -65,22 +65,9 @@ export type InducedAstigmatismSummary = {
   lens: InducedAstigmatism | null;
 };
 
-export type SpotCenter = { x: number; y: number; z: number };
-
-export type DeviationFromBaseline = {
-  baseline: SpotCenter;
-  current: SpotCenter;
-  dx: number;
-  dy: number;
-  dz: number;
-  magnitude_xy: number;
-  magnitude_xyz: number;
-};
-
 export type SimulateResult = {
   traced_rays: Ray[];
   induced_astigmatism: InducedAstigmatismSummary;
-  deviation_from_baseline: DeviationFromBaseline | null;
   light_deviation: LightDeviation;
 };
 
@@ -102,6 +89,8 @@ export type LightDeviation = {
   net_angle_deg: number;
 };
 
+export type AffineAnalysisResult = ReturnType<Affine["estimate"]>;
+
 /**
  * legacy simulator.js를 TypeScript로 옮긴 핵심 시뮬레이터입니다.
  * - 광원 광선을 생성하고
@@ -121,7 +110,6 @@ export default class SCAXEngine {
   private lastSturmGapAnalysis: ReturnType<Sturm["calculate"]> | null = null;
   private lastAffineAnalysis: ReturnType<Affine["estimate"]> = null;
   private pupilDiameterMm!: number | null;
-  private retinaZMm!: number | null;
   private hasPupilStop!: boolean;
   private eyePower!: SCAxPower;
   private lensConfigs!: LensConfig[];
@@ -132,7 +120,13 @@ export default class SCAXEngine {
   private eyeRotationQuaternion!: Quaternion;
   private eyeRotationQuaternionInverse!: Quaternion;
   private eyeRotationPivot!: Vector3;
-  private baselineSpotCenter: SpotCenter | null = null;
+  private currentProps!: {
+    eyeModel: EyeModel;
+    eye: Required<EyePowerInput>;
+    lens: LensConfig[];
+    light_source: LightSourceConfig;
+    pupil_type: PupilType;
+  };
 
   constructor(props: SCAXEngineProps = {}) {
     this.sturm = new Sturm();
@@ -151,7 +145,6 @@ export default class SCAXEngine {
   private configure(props: SCAXEngineProps = {}) {
     this.lastSturmGapAnalysis = null;
     this.lastAffineAnalysis = null;
-    this.baselineSpotCenter = null;
     const {
       eyeModel = "gullstrand",
       eye = { s: 0, c: 0, ax: 0, p: 0, p_ax: 0 },
@@ -201,6 +194,34 @@ export default class SCAXEngine {
         y: Number(spec?.tilt?.y ?? 0),
       },
     }));
+    this.currentProps = {
+      eyeModel,
+      eye: {
+        s: Number(eye?.s ?? 0),
+        c: Number(eye?.c ?? 0),
+        ax: Number(eye?.ax ?? 0),
+        p: this.normalizePrismAmount(eye?.p),
+        p_ax: this.normalizeAngle360(eye?.p_ax),
+      },
+      lens: this.lensConfigs.map((spec) => ({
+        s: Number(spec.s ?? 0),
+        c: Number(spec.c ?? 0),
+        ax: Number(spec.ax ?? 0),
+        p: this.normalizePrismAmount(spec.p),
+        p_ax: this.normalizeAngle360(spec.p_ax),
+        position: {
+          x: Number(spec.position?.x ?? 0),
+          y: Number(spec.position?.y ?? 0),
+          z: Number(spec.position?.z ?? SPECTACLE_VERTEX_DISTANCE_MM),
+        },
+        tilt: {
+          x: Number(spec.tilt?.x ?? 0),
+          y: Number(spec.tilt?.y ?? 0),
+        },
+      })),
+      light_source: { ...light_source } as LightSourceConfig,
+      pupil_type,
+    };
     this.lensPowers = this.lensConfigs.map((spec) => ({
       s: Number(spec?.s ?? 0),
       c: Number(spec?.c ?? 0),
@@ -271,7 +292,6 @@ export default class SCAXEngine {
       : light_source.type === "grid_rg"
         ? new GridRGLightSource(light_source as GridRGLightSourceProps)
         : new GridLightSource(light_source as GridLightSourceProps);
-    this.retinaZMm = this.findRetinaZFromSurfaces();
   }
 
   /**
@@ -280,13 +300,10 @@ export default class SCAXEngine {
    */
   public simulate(): SimulateResult {
     const tracedRays = this.rayTracing();
-    const sturmResult = this.sturmCalculation(tracedRays);
-    const currentCenter = this.extractApproxCenter(sturmResult);
-    const deviation = this.resolveDeviationFromBaseline(currentCenter);
+    this.sturmCalculation(tracedRays);
     return {
       traced_rays: tracedRays,
       induced_astigmatism: this.calculateInducedAstigmatism(this.eyePower, this.lensPowers),
-      deviation_from_baseline: deviation,
       light_deviation: this.calculateLightDeviation(),
     };
   }
@@ -308,33 +325,16 @@ export default class SCAXEngine {
   }
 
   /**
-   * 현재 광학 설정에서 기준점(baseline)을 수동으로 캡처합니다.
-   * - ray tracing + sturm 계산 후 approx_center를 baseline으로 저장합니다.
-   * - 기준점을 얻지 못하면 null을 반환합니다.
-   */
-  public captureBaseline() {
-    const tracedRays = this.rayTracing();
-    const sturmResult = this.sturmCalculation(tracedRays);
-    const center = this.extractApproxCenter(sturmResult);
-    this.baselineSpotCenter = center;
-    return center;
-  }
-
-  /**
-   * 저장된 baseline을 제거합니다.
-   * 다음 simulate 호출 시 현재 중심을 새 baseline으로 사용합니다.
-   */
-  public clearBaseline() {
-    this.baselineSpotCenter = null;
-  }
-
-  /**
    * 1) Ray tracing 전용 함수
    * 광원에서 시작한 광선을 표면 순서대로 굴절시켜 최종 광선 집합을 반환합니다.
    */
   public rayTracing(): Ray[] {
     const lensSurfaces = [...this.lens].sort((a, b) => this.surfaceOrderZ(a) - this.surfaceOrderZ(b));
     const eyeSurfaces = [...this.surfaces].sort((a, b) => this.surfaceOrderZ(a) - this.surfaceOrderZ(b));
+    eyeSurfaces.forEach((surface) => {
+      const maybeImageSurface = surface as unknown as { clearHitPoints?: () => void };
+      if (typeof maybeImageSurface.clearHitPoints === "function") maybeImageSurface.clearHitPoints();
+    });
     const sourceRays = this.hasPupilStop
       ? this.light_source.emitRays()
       : this.light_source.emitRays().filter((ray) => this.isRayInsidePupil(ray));
@@ -409,11 +409,17 @@ export default class SCAXEngine {
     return this.estimateAffineDistortion(pairs);
   }
 
-  public getSturmGapAnalysis() {
-    return this.lastSturmGapAnalysis;
-  }
-
-  public getAffineAnalysis() {
+  /**
+   * 현재 eye+lens 설정 기준 affine 왜곡 결과를 반환합니다.
+   * traced ray/affine 결과는 기존 계산값을 우선 재사용합니다.
+   */
+  public getAffineAnalysis(): AffineAnalysisResult {
+    if (!this.tracedRays.length) {
+      this.simulate();
+    }
+    if (!this.lastAffineAnalysis) {
+      this.lastAffineAnalysis = this.estimateAffineDistortion(this.createAffinePairs(this.tracedRays));
+    }
     return this.lastAffineAnalysis;
   }
 
@@ -476,12 +482,6 @@ export default class SCAXEngine {
   private getRayPoints(ray: Ray) {
     const points = (ray as unknown as { points?: Vector3[] }).points;
     return Array.isArray(points) ? points : [];
-  }
-
-  private findRetinaZFromSurfaces() {
-    const retinaSurface = this.surfaces.find((surface) => this.readSurfaceName(surface) === "retina");
-    const retinaZ = Number(this.readSurfacePosition(retinaSurface as Surface)?.z);
-    return Number.isFinite(retinaZ) ? retinaZ : null;
   }
 
   private isRayInsidePupil(ray: Ray) {
@@ -640,42 +640,28 @@ export default class SCAXEngine {
     return 2 * Math.hypot(j0, j45);
   }
 
-  private extractApproxCenter(sturmResult: ReturnType<Sturm["calculate"]> | null): SpotCenter | null {
-    const groups = (sturmResult as unknown as {
-      sturm_info?: Array<{ approx_center?: { x?: number; y?: number; z?: number } | null }>;
-    })?.sturm_info;
-    if (!Array.isArray(groups)) return null;
-
-    for (const group of groups) {
-      const center = group?.approx_center;
-      const x = Number(center?.x);
-      const y = Number(center?.y);
-      const z = Number(center?.z);
-      if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
-        return { x, y, z };
-      }
-    }
-    return null;
-  }
-
-  private resolveDeviationFromBaseline(current: SpotCenter | null): DeviationFromBaseline | null {
-    if (!current) return null;
-    if (!this.baselineSpotCenter) {
-      this.baselineSpotCenter = { ...current };
-    }
-    const baseline = this.baselineSpotCenter;
-    const dx = current.x - baseline.x;
-    const dy = current.y - baseline.y;
-    const dz = current.z - baseline.z;
-    return {
-      baseline: { ...baseline },
-      current: { ...current },
-      dx,
-      dy,
-      dz,
-      magnitude_xy: Math.hypot(dx, dy),
-      magnitude_xyz: Math.hypot(dx, dy, dz),
-    };
+  private createAffinePairs(rays: Ray[]): AffinePair[] {
+    return (Array.isArray(rays) ? rays : [])
+      .map((ray) => {
+        const points = this.getRayPoints(ray);
+        if (!Array.isArray(points) || points.length < 2) return null;
+        const source = points[0];
+        const target = points[points.length - 1];
+        const sx = Number(source?.x);
+        const sy = Number(source?.y);
+        const tx = Number(target?.x);
+        const ty = Number(target?.y);
+        if (
+          !Number.isFinite(sx)
+          || !Number.isFinite(sy)
+          || !Number.isFinite(tx)
+          || !Number.isFinite(ty)
+        ) {
+          return null;
+        }
+        return { sx, sy, tx, ty };
+      })
+      .filter((pair): pair is AffinePair => Boolean(pair));
   }
 
 }

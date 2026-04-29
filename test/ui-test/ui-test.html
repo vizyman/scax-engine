@@ -63,8 +63,8 @@
     }
     #affine-canvas {
       display: block;
-      width: 280px;
-      height: 280px;
+      width: 420px;
+      height: 340px;
       border: 1px solid #334155;
       border-radius: 6px;
       background: #020617;
@@ -98,8 +98,8 @@
         return;
       }
       affinePanel.innerHTML =
-        '<div id="affine-title">Affine Distortion</div>' +
-        '<canvas id="affine-canvas" width="280" height="280"></canvas>' +
+        '<div id="affine-title">Affine Distortion (Current)</div>' +
+        '<canvas id="affine-canvas" width="420" height="340"></canvas>' +
         '<div id="affine-meta">Loading...</div>';
       const affineCanvas = document.getElementById("affine-canvas");
       const affineMeta = document.getElementById("affine-meta");
@@ -112,7 +112,6 @@
         hud.textContent = "Failed to initialize affine canvas.";
         return;
       }
-
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x0f172a);
 
@@ -248,6 +247,16 @@
 
       function buildLensConfigs(state) {
         const lens = [];
+        const specS = Number(state.spectacleS);
+        const specC = Number(state.spectacleC);
+        const specP = Number(state.spectacleP);
+        const specAx = Number(state.spectacleAx);
+        const specPAx = Number(state.spectaclePAx);
+        const specPosX = Number(state.spectaclePosX);
+        const specPosY = Number(state.spectaclePosY);
+        const specPosZ = Number(state.spectaclePosZ);
+        const specTiltX = Number(state.spectacleTiltX);
+        const specTiltY = Number(state.spectacleTiltY);
         if (state.crossCylinderEnabled) {
           const s = CROSS_CYL_MERIDIAN_PLUS_D;
           const c = CROSS_CYL_MERIDIAN_MINUS_D - CROSS_CYL_MERIDIAN_PLUS_D;
@@ -264,19 +273,19 @@
         }
         if (state.spectacleEnabled) {
           lens.push({
-            s: Number(state.spectacleS),
-            c: Number(state.spectacleC),
-            ax: Number(state.spectacleAx),
-            p: Number(state.spectacleP),
-            p_ax: Number(state.spectaclePAx),
+            s: specS,
+            c: specC,
+            ax: specAx,
+            p: specP,
+            p_ax: specPAx,
             position: {
-              x: Number(state.spectaclePosX),
-              y: Number(state.spectaclePosY),
-              z: Number(state.spectaclePosZ),
+              x: specPosX,
+              y: specPosY,
+              z: specPosZ,
             },
             tilt: {
-              x: Number(state.spectacleTiltX),
-              y: Number(state.spectacleTiltY),
+              x: specTiltX,
+              y: specTiltY,
             },
           });
         }
@@ -438,6 +447,27 @@
         };
       }
 
+      function getSurfaceQuaternion(surface) {
+        const tiltXDeg = Number(surface?.tilt?.x || 0);
+        const tiltYDeg = Number(surface?.tilt?.y || 0);
+        return new THREE.Quaternion().setFromEuler(
+          new THREE.Euler(
+            THREE.MathUtils.degToRad(tiltXDeg),
+            THREE.MathUtils.degToRad(tiltYDeg),
+            0,
+            "XYZ",
+          ),
+        );
+      }
+
+      function localPointToWorld(surface, localPoint) {
+        const pos = surface?.position || { x: 0, y: 0, z: 0 };
+        return localPoint
+          .clone()
+          .applyQuaternion(getSurfaceQuaternion(surface))
+          .add(new THREE.Vector3(pos.x, pos.y, pos.z));
+      }
+
       function estimateSurfaceRadius(surface) {
         const type = String(surface?.type || "").toLowerCase();
         const name = String(surface?.name || "").toLowerCase();
@@ -455,7 +485,6 @@
 
       function buildGeometryForSurface(surface, radius) {
         const type = surface.type || "";
-        const pos = surface.position || { x: 0, y: 0, z: 0 };
         const radialSegments = 24;
         const angularSegments = 64;
         const safeRadius = Math.max(0, Number.isFinite(radius) ? radius : estimateSurfaceRadius(surface));
@@ -471,7 +500,8 @@
 
         if (type === "paraxial") {
           return buildDiskMeshData(function (x, y) {
-            return [pos.x + x, pos.y + y, pos.z];
+            const world = localPointToWorld(surface, new THREE.Vector3(x, y, 0));
+            return [world.x, world.y, world.z];
           }, safeRadius, radialSegments, angularSegments);
         }
 
@@ -486,12 +516,13 @@
             : safeRadius;
           return buildDiskMeshData(function (x, y) {
             const rho2 = x * x + y * y;
-            let z = pos.z;
+            let z = 0;
             if (!planar && Math.abs(r) * Math.abs(r) >= rho2) {
               const root = Math.sqrt(Math.max(0, r * r - rho2));
-              z = pos.z + r - Math.sign(r || 1) * root;
+              z = r - Math.sign(r || 1) * root;
             }
-            return [pos.x + x, pos.y + y, z];
+            const world = localPointToWorld(surface, new THREE.Vector3(x, y, z));
+            return [world.x, world.y, world.z];
           }, capRadius, radialSegments, angularSegments);
         }
 
@@ -508,14 +539,15 @@
               const denom = 1 + sqrtB;
               sag = Math.abs(denom) < 1e-12 ? 0 : (curvature * rho2) / denom;
             }
-            return [pos.x + x, pos.y + y, pos.z + sag];
+            const world = localPointToWorld(surface, new THREE.Vector3(x, y, sag));
+            return [world.x, world.y, world.z];
           }, safeRadius, radialSegments, angularSegments);
         }
 
         if (type === "toric") {
           const rAxis = Number(surface.r_axis);
           const rPerp = Number(surface.r_perp);
-          const axisDeg = Number(surface.tilt?.y || 0);
+          const axisDeg = Number(surface.axis_deg ?? surface.tilt?.y ?? 0);
           const axisRad = (axisDeg * Math.PI) / 180;
           const c = Math.cos(axisRad);
           const s = Math.sin(axisRad);
@@ -530,7 +562,8 @@
             const sqrtB = Math.sqrt(Math.max(0, b));
             const den = 1 + sqrtB;
             const sag = Math.abs(den) < 1e-12 ? 0 : a / den;
-            return [pos.x + x, pos.y + y, pos.z + sag];
+            const world = localPointToWorld(surface, new THREE.Vector3(x, y, sag));
+            return [world.x, world.y, world.z];
           }, safeRadius, radialSegments, angularSegments);
         }
 
@@ -544,7 +577,7 @@
 
         if (type === "paraxial") {
           return function (x, y) {
-            return new THREE.Vector3(pos.x + x, pos.y + y, pos.z);
+            return localPointToWorld(surface, new THREE.Vector3(x, y, 0));
           };
         }
 
@@ -554,12 +587,12 @@
           const planar = !Number.isFinite(r) || Math.abs(r) > 1e12;
           return function (x, y) {
             const rho2 = x * x + y * y;
-            let z = pos.z;
+            let z = 0;
             if (!planar && Math.abs(r) * Math.abs(r) >= rho2) {
               const root = Math.sqrt(Math.max(0, r * r - rho2));
-              z = pos.z + r - Math.sign(r || 1) * root;
+              z = r - Math.sign(r || 1) * root;
             }
-            return new THREE.Vector3(pos.x + x, pos.y + y, z);
+            return localPointToWorld(surface, new THREE.Vector3(x, y, z));
           };
         }
 
@@ -576,14 +609,14 @@
               const denom = 1 + sqrtB;
               sag = Math.abs(denom) < 1e-12 ? 0 : (curvature * rho2) / denom;
             }
-            return new THREE.Vector3(pos.x + x, pos.y + y, pos.z + sag);
+            return localPointToWorld(surface, new THREE.Vector3(x, y, sag));
           };
         }
 
         if (type === "toric") {
           const rAxis = Number(surface.r_axis);
           const rPerp = Number(surface.r_perp);
-          const axisDeg = Number(surface.tilt?.y || 0);
+          const axisDeg = Number(surface.axis_deg ?? surface.tilt?.y ?? 0);
           const axisRad = (axisDeg * Math.PI) / 180;
           const c = Math.cos(axisRad);
           const s = Math.sin(axisRad);
@@ -597,7 +630,7 @@
             const sqrtB = Math.sqrt(Math.max(0, b));
             const den = 1 + sqrtB;
             const sag = Math.abs(den) < 1e-12 ? 0 : a / den;
-            return new THREE.Vector3(pos.x + x, pos.y + y, pos.z + sag);
+            return localPointToWorld(surface, new THREE.Vector3(x, y, sag));
           };
         }
 
@@ -623,13 +656,8 @@
 
       function drawMeridian(surface, axisDeg, halfLength, color) {
         if (!surface) return null;
-        const pos = surface.position || { x: 0, y: 0, z: 0 };
-        const axisRad = (axisDeg * Math.PI) / 180;
-        const c = Math.cos(axisRad);
-        const s = Math.sin(axisRad);
-        const p0 = new THREE.Vector3(pos.x - c * halfLength, pos.y - s * halfLength, pos.z);
-        const p1 = new THREE.Vector3(pos.x + c * halfLength, pos.y + s * halfLength, pos.z);
-        const points = [p0, p1];
+        const points = createMeridianPolyline(surface, axisDeg, halfLength, 64);
+        if (!Array.isArray(points) || points.length < 2) return null;
         const geometry = new THREE.BufferGeometry().setFromPoints(points);
         const material = new THREE.LineBasicMaterial({
           color,
@@ -658,6 +686,7 @@
         return [];
       }
 
+
       function toFixedOrNa(value, digits) {
         return Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : "NaN";
       }
@@ -666,137 +695,169 @@
         return Number.isFinite(Number(value)) ? Number(value).toExponential(digits) : "NaN";
       }
 
-      function drawAffineGrid(canvasCtx, affineResult, affinePairs) {
+      function estimateAffineDomain(affineResult) {
+        if (!affineResult) return 6 * 1.05;
+        const gridExtent = 6;
+        const gridStep = gridExtent / 3;
+        function affineMapLocal(result, x, y) {
+          return {
+            x: result.a * x + result.b * y + result.c,
+            y: result.d * x + result.e * y + result.f,
+          };
+        }
+        let maxAbs = gridExtent;
+        for (let i = -3; i <= 3; i += 1) {
+          for (let t = -30; t <= 30; t += 1) {
+            const s = (t / 30) * gridExtent;
+            const p1 = affineMapLocal(affineResult, i * gridStep, s);
+            const p2 = affineMapLocal(affineResult, s, i * gridStep);
+            maxAbs = Math.max(
+              maxAbs,
+              Math.abs(p1.x), Math.abs(p1.y),
+              Math.abs(p2.x), Math.abs(p2.y),
+            );
+          }
+        }
+        return Math.max(gridExtent * 1.05, maxAbs * 1.15);
+      }
+
+
+      function drawAffineGrid(canvasCtx, affineResult) {
         const width = canvasCtx.canvas.width;
         const height = canvasCtx.canvas.height;
         canvasCtx.clearRect(0, 0, width, height);
         canvasCtx.fillStyle = "#020617";
         canvasCtx.fillRect(0, 0, width, height);
 
-        if (!affineResult || !Array.isArray(affinePairs) || affinePairs.length < 4) {
+        if (!affineResult) {
           canvasCtx.fillStyle = "#94a3b8";
           canvasCtx.font = "12px Arial";
-          canvasCtx.fillText("Affine unavailable (need >= 4 pairs)", 12, 24);
+          canvasCtx.fillText("Affine unavailable", 12, 24);
           return;
         }
+        const sourceColor = "#f59e0b";
+        const imageColor = "#22d3ee";
+        const entry = { result: affineResult };
 
         const margin = 18;
-        const points = affinePairs.flatMap(function (pair) {
-          return [
-            { x: Number(pair.sx), y: Number(pair.sy) },
-            { x: Number(pair.tx), y: Number(pair.ty) },
-          ];
-        }).filter(function (p) {
-          return Number.isFinite(p.x) && Number.isFinite(p.y);
-        });
-        if (!points.length) return;
+        const plotLeft = margin;
+        const plotTop = 26;
+        const plotWidth = width - margin * 2;
+        const plotHeight = height - margin - plotTop;
+        const gridExtent = 6;
+        const gridStep = gridExtent / 3;
 
-        let minX = Number.POSITIVE_INFINITY;
-        let maxX = Number.NEGATIVE_INFINITY;
-        let minY = Number.POSITIVE_INFINITY;
-        let maxY = Number.NEGATIVE_INFINITY;
-        points.forEach(function (p) {
-          minX = Math.min(minX, p.x);
-          maxX = Math.max(maxX, p.x);
-          minY = Math.min(minY, p.y);
-          maxY = Math.max(maxY, p.y);
-        });
-
-        const spanX = Math.max(1e-6, maxX - minX);
-        const spanY = Math.max(1e-6, maxY - minY);
-        const scale = Math.min((width - 2 * margin) / spanX, (height - 2 * margin) / spanY);
-        const cx = (minX + maxX) / 2;
-        const cy = (minY + maxY) / 2;
-        const ox = width / 2;
-        const oy = height / 2;
-
-        function toCanvas(x, y) {
-          return {
-            x: ox + (x - cx) * scale,
-            y: oy - (y - cy) * scale,
-          };
-        }
-        function affineMap(x, y) {
+        function affineMap(affineResult, x, y) {
           return {
             x: affineResult.a * x + affineResult.b * y + affineResult.c,
             y: affineResult.d * x + affineResult.e * y + affineResult.f,
           };
         }
 
+        const domain = estimateAffineDomain(entry.result);
+        const scale = Math.min((plotWidth - 2) / (domain * 2), (plotHeight - 2) / (domain * 2));
+        const originX = plotLeft + plotWidth / 2;
+        const originY = plotTop + plotHeight / 2;
+
+        function toCanvas(x, y) {
+          return {
+            x: originX + x * scale,
+            y: originY - y * scale,
+          };
+        }
+
         canvasCtx.strokeStyle = "#1e293b";
         canvasCtx.lineWidth = 1;
+        canvasCtx.strokeRect(plotLeft, plotTop, plotWidth, plotHeight);
+        const axisX0 = toCanvas(-domain, 0);
+        const axisX1 = toCanvas(domain, 0);
+        const axisY0 = toCanvas(0, -domain);
+        const axisY1 = toCanvas(0, domain);
         canvasCtx.beginPath();
-        canvasCtx.moveTo(0, oy);
-        canvasCtx.lineTo(width, oy);
-        canvasCtx.moveTo(ox, 0);
-        canvasCtx.lineTo(ox, height);
+        canvasCtx.moveTo(axisX0.x, axisX0.y);
+        canvasCtx.lineTo(axisX1.x, axisX1.y);
+        canvasCtx.moveTo(axisY0.x, axisY0.y);
+        canvasCtx.lineTo(axisY1.x, axisY1.y);
         canvasCtx.stroke();
 
-        const gridStep = Math.max(spanX, spanY) / 6;
-        const gridExtent = Math.max(spanX, spanY) * 0.6;
-
-        canvasCtx.strokeStyle = "#22d3ee";
+        canvasCtx.strokeStyle = "#334155";
         canvasCtx.lineWidth = 1;
-        for (let i = -3; i <= 3; i++) {
-          const p0 = toCanvas(i * gridStep, -gridExtent);
-          const p1 = toCanvas(i * gridStep, gridExtent);
+        for (let i = -3; i <= 3; i += 1) {
+          const x0 = toCanvas(i * gridStep, -gridExtent);
+          const x1 = toCanvas(i * gridStep, gridExtent);
+          const y0 = toCanvas(-gridExtent, i * gridStep);
+          const y1 = toCanvas(gridExtent, i * gridStep);
           canvasCtx.beginPath();
-          canvasCtx.moveTo(p0.x, p0.y);
-          canvasCtx.lineTo(p1.x, p1.y);
+          canvasCtx.moveTo(x0.x, x0.y);
+          canvasCtx.lineTo(x1.x, x1.y);
           canvasCtx.stroke();
-          const q0 = toCanvas(-gridExtent, i * gridStep);
-          const q1 = toCanvas(gridExtent, i * gridStep);
           canvasCtx.beginPath();
-          canvasCtx.moveTo(q0.x, q0.y);
-          canvasCtx.lineTo(q1.x, q1.y);
+          canvasCtx.moveTo(y0.x, y0.y);
+          canvasCtx.lineTo(y1.x, y1.y);
           canvasCtx.stroke();
         }
 
-        canvasCtx.strokeStyle = "#f59e0b";
-        canvasCtx.lineWidth = 1.6;
-        for (let i = -3; i <= 3; i++) {
+        canvasCtx.strokeStyle = sourceColor;
+        canvasCtx.lineWidth = 1.1;
+        for (let i = -3; i <= 3; i += 1) {
+          const x0 = toCanvas(i * gridStep, -gridExtent);
+          const x1 = toCanvas(i * gridStep, gridExtent);
+          const y0 = toCanvas(-gridExtent, i * gridStep);
+          const y1 = toCanvas(gridExtent, i * gridStep);
+          canvasCtx.beginPath();
+          canvasCtx.moveTo(x0.x, x0.y);
+          canvasCtx.lineTo(x1.x, x1.y);
+          canvasCtx.stroke();
+          canvasCtx.beginPath();
+          canvasCtx.moveTo(y0.x, y0.y);
+          canvasCtx.lineTo(y1.x, y1.y);
+          canvasCtx.stroke();
+        }
+
+        canvasCtx.strokeStyle = imageColor;
+        canvasCtx.lineWidth = 1.5;
+        for (let i = -3; i <= 3; i += 1) {
           let started = false;
           canvasCtx.beginPath();
-          for (let t = -30; t <= 30; t++) {
+          for (let t = -30; t <= 30; t += 1) {
             const s = (t / 30) * gridExtent;
-            const m = affineMap(i * gridStep, s);
-            const c = toCanvas(m.x, m.y);
+            const mapped = affineMap(entry.result, i * gridStep, s);
+            const point = toCanvas(mapped.x, mapped.y);
             if (!started) {
-              canvasCtx.moveTo(c.x, c.y);
+              canvasCtx.moveTo(point.x, point.y);
               started = true;
             } else {
-              canvasCtx.lineTo(c.x, c.y);
+              canvasCtx.lineTo(point.x, point.y);
             }
           }
           canvasCtx.stroke();
-
           started = false;
           canvasCtx.beginPath();
-          for (let t = -30; t <= 30; t++) {
+          for (let t = -30; t <= 30; t += 1) {
             const s = (t / 30) * gridExtent;
-            const m = affineMap(s, i * gridStep);
-            const c = toCanvas(m.x, m.y);
+            const mapped = affineMap(entry.result, s, i * gridStep);
+            const point = toCanvas(mapped.x, mapped.y);
             if (!started) {
-              canvasCtx.moveTo(c.x, c.y);
+              canvasCtx.moveTo(point.x, point.y);
               started = true;
             } else {
-              canvasCtx.lineTo(c.x, c.y);
+              canvasCtx.lineTo(point.x, point.y);
             }
           }
           canvasCtx.stroke();
         }
 
-        canvasCtx.strokeStyle = "#ef4444";
-        canvasCtx.lineWidth = 1;
-        affinePairs.forEach(function (pair) {
-          const s = toCanvas(Number(pair.sx), Number(pair.sy));
-          const t = toCanvas(Number(pair.tx), Number(pair.ty));
-          canvasCtx.beginPath();
-          canvasCtx.moveTo(s.x, s.y);
-          canvasCtx.lineTo(t.x, t.y);
-          canvasCtx.stroke();
-        });
+        canvasCtx.font = "11px Arial";
+        canvasCtx.fillStyle = sourceColor;
+        canvasCtx.fillRect(plotLeft, 8, 12, 8);
+        canvasCtx.fillStyle = "#cbd5e1";
+        canvasCtx.fillText("Source Rays", plotLeft + 16, 15);
+        canvasCtx.fillStyle = imageColor;
+        canvasCtx.fillRect(plotLeft + 120, 8, 12, 8);
+        canvasCtx.fillStyle = "#cbd5e1";
+        canvasCtx.fillText("Current Image", plotLeft + 136, 15);
       }
+
 
       function flattenTraceSurfaces(compoundAwareSurfaces) {
         const list = [];
@@ -871,11 +932,12 @@
         marker.position.copy(position);
         addSimulationObject(marker);
       }
-
-      function createOrientedFocalLine(profile, color) {
+      function createOrientedFocalLine(profile, color, yOffset) {
         const at = toFinitePoint(profile?.at);
         const angleDeg = Number(profile?.angleMajorDeg);
         if (!at || !Number.isFinite(angleDeg)) return false;
+        const yShift = Number.isFinite(Number(yOffset)) ? Number(yOffset) : 0;
+        if (Math.abs(yShift) > 1e-12) at.y += yShift;
         const length = 12.0;
         const angleRad = (angleDeg * Math.PI) / 180;
         const dir = new THREE.Vector3(Math.cos(angleRad), Math.sin(angleRad), 0);
@@ -908,6 +970,8 @@
 
       function runSimulationAndRender() {
         clearSimulationObjects();
+        const lensConfigs = buildLensConfigs(uiState);
+        const hasLens = Array.isArray(lensConfigs) && lensConfigs.length > 0;
         const engine = new ScaxEngine.SCAXEngine({
           eyeModel: uiState.eyeModel,
           eye: {
@@ -917,7 +981,7 @@
             p: uiState.eyeP,
             p_ax: uiState.eyePAx,
           },
-          lens: buildLensConfigs(uiState),
+          lens: lensConfigs,
           light_source: buildLightSourceConfig(uiState),
         });
         const eyeRotationForRender = engine.getEyeRotationForRender();
@@ -940,7 +1004,7 @@
         const tracedRays = Array.isArray(simulationResult?.traced_rays)
           ? simulationResult.traced_rays
           : [];
-        const affinePairs = tracedRays
+        const affinePairCount = tracedRays
           .map(function (ray) {
             const points = getRayPoints(ray);
             if (!Array.isArray(points) || points.length < 2) return null;
@@ -954,8 +1018,9 @@
             if (!Number.isFinite(sx) || !Number.isFinite(sy) || !Number.isFinite(tx) || !Number.isFinite(ty)) return null;
             return { sx, sy, tx, ty };
           })
-          .filter(Boolean);
-        const affineResult = engine.estimateAffineDistortion(affinePairs);
+          .filter(Boolean)
+          .length;
+        const affineResult = engine.getAffineAnalysis();
         const sturmResult = engine.sturmCalculation(tracedRays);
         const sturmInfo = Array.isArray(sturmResult?.sturm_info) ? sturmResult.sturm_info : [];
         const sourceRays = engine?.light_source?.emitRays ? engine.light_source.emitRays() : [];
@@ -1189,6 +1254,7 @@
           )
           : "none";
 
+        const VISUAL_Y_OFFSET = 0.0;
         let sturmIntervalCount = 0;
         let sturmApproxMarkerCount = 0;
         let sturmFallbackPointCount = 0;
@@ -1201,7 +1267,11 @@
           const hasAstigmatism = Boolean(item?.has_astigmatism);
 
           if (anteriorPoint && posteriorPoint) {
-            const intervalGeometry = new THREE.BufferGeometry().setFromPoints([anteriorPoint, posteriorPoint]);
+            const elevatedAnteriorPoint = anteriorPoint.clone();
+            const elevatedPosteriorPoint = posteriorPoint.clone();
+            elevatedAnteriorPoint.y += VISUAL_Y_OFFSET;
+            elevatedPosteriorPoint.y += VISUAL_Y_OFFSET;
+            const intervalGeometry = new THREE.BufferGeometry().setFromPoints([elevatedAnteriorPoint, elevatedPosteriorPoint]);
             const intervalMaterial = new THREE.LineBasicMaterial({
               color,
               transparent: true,
@@ -1212,11 +1282,13 @@
             sturmIntervalCount += 1;
           }
 
-          if (hasAstigmatism && createOrientedFocalLine(item?.anterior?.profile, color)) sturmFocalLineCount += 1;
-          if (hasAstigmatism && createOrientedFocalLine(item?.posterior?.profile, color)) sturmFocalLineCount += 1;
+          if (hasAstigmatism && createOrientedFocalLine(item?.anterior?.profile, color, VISUAL_Y_OFFSET)) sturmFocalLineCount += 1;
+          if (hasAstigmatism && createOrientedFocalLine(item?.posterior?.profile, color, VISUAL_Y_OFFSET)) sturmFocalLineCount += 1;
 
           if (approxCenterPoint) {
-            createMarker(approxCenterPoint, color, 0.7);
+            const elevatedApproxCenterPoint = approxCenterPoint.clone();
+            elevatedApproxCenterPoint.y += VISUAL_Y_OFFSET;
+            createMarker(elevatedApproxCenterPoint, color, 0.7);
             sturmApproxMarkerCount += 1;
           }
         });
@@ -1272,6 +1344,14 @@
         "eye rotation(for render): x=" + toFixedOrNa(eyeRotationForRender?.x_deg, 3) +
         "°, y=" + toFixedOrNa(eyeRotationForRender?.y_deg, 3) +
         "°, mag=" + toFixedOrNa(eyeRotationForRender?.magnitude_deg, 3) + "°\n" +
+        "eye prism effect: x=" + toFixedOrNa(simulationResult?.light_deviation?.eye_prism_effect?.x, 4) +
+        ", y=" + toFixedOrNa(simulationResult?.light_deviation?.eye_prism_effect?.y, 4) +
+        ", mag=" + toFixedOrNa(simulationResult?.light_deviation?.eye_prism_effect?.magnitude, 4) +
+        ", ang=" + toFixedOrNa(simulationResult?.light_deviation?.eye_prism_effect?.angle_deg, 2) + "°\n" +
+        "lens prism total: x=" + toFixedOrNa(simulationResult?.light_deviation?.lens_prism_total?.x, 4) +
+        ", y=" + toFixedOrNa(simulationResult?.light_deviation?.lens_prism_total?.y, 4) +
+        ", mag=" + toFixedOrNa(simulationResult?.light_deviation?.lens_prism_total?.magnitude, 4) +
+        ", ang=" + toFixedOrNa(simulationResult?.light_deviation?.lens_prism_total?.angle_deg, 2) + "°\n" +
         "light deviation net prism: x=" + toFixedOrNa(simulationResult?.light_deviation?.net_prism?.x, 4) +
         ", y=" + toFixedOrNa(simulationResult?.light_deviation?.net_prism?.y, 4) +
         ", mag=" + toFixedOrNa(simulationResult?.light_deviation?.net_prism?.magnitude, 4) +
@@ -1284,10 +1364,10 @@
         if (!affineResult) {
           affineMeta.textContent =
             "status: unavailable\n" +
-            "pairs: " + affinePairs.length + " (need >= 4)";
+            "pairs: " + affinePairCount + " (need >= 4)";
         } else {
           affineMeta.textContent =
-            "pairs: " + affineResult.count + "\n" +
+            "current pairs: " + affineResult.count + "\n" +
             "[x'; y'] = [[a b c], [d e f]] [x y 1]^T\n" +
             "a=" + toFixedOrNa(affineResult.a, 6) +
             ", b=" + toFixedOrNa(affineResult.b, 6) +
@@ -1305,7 +1385,7 @@
               3,
             );
         }
-        drawAffineGrid(affineCtx, affineResult, affinePairs);
+        drawAffineGrid(affineCtx, affineResult);
       }
       runSimulationAndRender();
 
