@@ -7,6 +7,7 @@ export type {
   PupilType,
   LightSourceConfig,
   LensConfig,
+  EyeConfig,
   EyePowerInput,
   SCAXEngineProps,
   SCAxPower,

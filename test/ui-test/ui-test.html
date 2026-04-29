@@ -218,6 +218,8 @@
         eyeAx: toNumberParam("eyeAx", 180),
         eyeP: toNumberParam("eyeP", 0),
         eyePAx: toNumberParam("eyePAx", 0),
+        eyeTiltX: toNumberParam("eyeTiltX", 0),
+        eyeTiltY: toNumberParam("eyeTiltY", 0),
         lightSourceType: (function () {
           const value = String(searchParams.get("lsType") || "grid");
           if (value === "radial" || value === "grid_rg") return value;
@@ -230,6 +232,11 @@
         lightAngleDivision: toNumberParam("lsAngleDivision", 8),
         lightZ: toNumberParam("lsZ", -50),
         lightVergence: toNumberParam("lsVergence", 0),
+        lightPosX: toNumberParam("lsPosX", 0),
+        lightPosY: toNumberParam("lsPosY", 0),
+        lightPosZ: toNumberParam("lsPosZ", 0),
+        lightTiltX: toNumberParam("lsTiltX", 0),
+        lightTiltY: toNumberParam("lsTiltY", 0),
         spectacleEnabled: toBooleanParam("specOn", false),
         spectacleS: toNumberParam("specS", 0.0),
         spectacleC: toNumberParam("specC", 0.0),
@@ -293,6 +300,17 @@
       }
 
       function buildLightSourceConfig(state) {
+        const commonTransform = {
+          position: {
+            x: Number(state.lightPosX),
+            y: Number(state.lightPosY),
+            z: Number(state.lightPosZ),
+          },
+          tilt: {
+            x: Number(state.lightTiltX),
+            y: Number(state.lightTiltY),
+          },
+        };
         if (state.lightSourceType === "radial") {
           return {
             type: "radial",
@@ -301,6 +319,7 @@
             angle_division: Math.max(4, Math.round(Number(state.lightAngleDivision))),
             z: Number(state.lightZ),
             vergence: Number(state.lightVergence),
+            ...commonTransform,
           };
         }
         if (state.lightSourceType === "grid_rg") {
@@ -311,6 +330,7 @@
             division: Math.max(4, Math.round(Number(state.lightDivision))),
             z: Number(state.lightZ),
             vergence: Number(state.lightVergence),
+            ...commonTransform,
           };
         }
         return {
@@ -320,6 +340,7 @@
           division: Math.max(4, Math.round(Number(state.lightDivision))),
           z: Number(state.lightZ),
           vergence: Number(state.lightVergence),
+          ...commonTransform,
         };
       }
 
@@ -331,6 +352,8 @@
         params.set("eyeAx", String(uiState.eyeAx));
         params.set("eyeP", String(uiState.eyeP));
         params.set("eyePAx", String(uiState.eyePAx));
+        params.set("eyeTiltX", String(uiState.eyeTiltX));
+        params.set("eyeTiltY", String(uiState.eyeTiltY));
         params.set("lsType", String(uiState.lightSourceType));
         params.set("lsWidth", String(uiState.lightWidth));
         params.set("lsHeight", String(uiState.lightHeight));
@@ -339,6 +362,11 @@
         params.set("lsAngleDivision", String(uiState.lightAngleDivision));
         params.set("lsZ", String(uiState.lightZ));
         params.set("lsVergence", String(uiState.lightVergence));
+        params.set("lsPosX", String(uiState.lightPosX));
+        params.set("lsPosY", String(uiState.lightPosY));
+        params.set("lsPosZ", String(uiState.lightPosZ));
+        params.set("lsTiltX", String(uiState.lightTiltX));
+        params.set("lsTiltY", String(uiState.lightTiltY));
         params.set("specOn", String(uiState.spectacleEnabled));
         params.set("specS", String(uiState.spectacleS));
         params.set("specC", String(uiState.spectacleC));
@@ -376,6 +404,8 @@
       eyeFolder.add(uiState, "eyeAx", 0, 180, 1).name("Eye Axis").onFinishChange(requestSimulationRefresh);
       eyeFolder.add(uiState, "eyeP", 0, 20, 0.1).name("Eye Prism (Δ)").onChange(requestSimulationRefresh);
       eyeFolder.add(uiState, "eyePAx", 0, 360, 1).name("Eye Prism Base Axis").onChange(requestSimulationRefresh);
+      eyeFolder.add(uiState, "eyeTiltX", -30, 30, 0.1).name("Eye Tilt X (deg)").onFinishChange(requestSimulationRefresh);
+      eyeFolder.add(uiState, "eyeTiltY", -30, 30, 0.1).name("Eye Tilt Y (deg)").onFinishChange(requestSimulationRefresh);
 
       const lightFolder = gui.addFolder("3) Light Source");
       lightFolder
@@ -389,6 +419,11 @@
       lightFolder.add(uiState, "lightAngleDivision", 4, 64, 1).name("Angle Division").onFinishChange(requestSimulationRefresh);
       lightFolder.add(uiState, "lightZ", -200, 0, 0.1).name("Source Z (mm)").onFinishChange(requestSimulationRefresh);
       lightFolder.add(uiState, "lightVergence", -20, 20, 0.1).name("Vergence (D)").onFinishChange(requestSimulationRefresh);
+      lightFolder.add(uiState, "lightPosX", -40, 40, 0.1).name("Source Pos X (mm)").onFinishChange(requestSimulationRefresh);
+      lightFolder.add(uiState, "lightPosY", -40, 40, 0.1).name("Source Pos Y (mm)").onFinishChange(requestSimulationRefresh);
+      lightFolder.add(uiState, "lightPosZ", -40, 40, 0.1).name("Source Pos Z (mm)").onFinishChange(requestSimulationRefresh);
+      lightFolder.add(uiState, "lightTiltX", -45, 45, 0.1).name("Source Tilt X (deg)").onFinishChange(requestSimulationRefresh);
+      lightFolder.add(uiState, "lightTiltY", -45, 45, 0.1).name("Source Tilt Y (deg)").onFinishChange(requestSimulationRefresh);
 
       const specFolder = gui.addFolder("4) Spectacle Lens");
       specFolder.add(uiState, "spectacleEnabled").name("Insert Spectacle").onFinishChange(requestSimulationRefresh);
@@ -935,12 +970,15 @@
       function createOrientedFocalLine(profile, color, yOffset) {
         const at = toFinitePoint(profile?.at);
         const angleDeg = Number(profile?.angleMajorDeg);
+        const majorDirection = toFinitePoint(profile?.majorDirection);
         if (!at || !Number.isFinite(angleDeg)) return false;
         const yShift = Number.isFinite(Number(yOffset)) ? Number(yOffset) : 0;
         if (Math.abs(yShift) > 1e-12) at.y += yShift;
         const length = 12.0;
         const angleRad = (angleDeg * Math.PI) / 180;
-        const dir = new THREE.Vector3(Math.cos(angleRad), Math.sin(angleRad), 0);
+        const dir = (majorDirection && majorDirection.lengthSq() > 1e-12)
+          ? majorDirection.clone().normalize()
+          : new THREE.Vector3(Math.cos(angleRad), Math.sin(angleRad), 0);
         const p0 = at.clone().addScaledVector(dir, -length / 2);
         const p1 = at.clone().addScaledVector(dir, length / 2);
         const geometry = new THREE.BufferGeometry().setFromPoints([p0, p1]);
@@ -980,6 +1018,10 @@
             ax: uiState.eyeAx,
             p: uiState.eyeP,
             p_ax: uiState.eyePAx,
+            tilt: {
+              x: uiState.eyeTiltX,
+              y: uiState.eyeTiltY,
+            },
           },
           lens: lensConfigs,
           light_source: buildLightSourceConfig(uiState),
@@ -1115,6 +1157,67 @@
 
         let rayCount = 0;
         let raySegmentCount = 0;
+        let sourcePointCount = 0;
+        let sourceDirectionArrowCount = 0;
+
+        // Visualize light source independently from tracing success/failure.
+        const sourceTiltQuat = new THREE.Quaternion().setFromEuler(
+          new THREE.Euler(
+            THREE.MathUtils.degToRad(Number(uiState.lightTiltX || 0)),
+            THREE.MathUtils.degToRad(Number(uiState.lightTiltY || 0)),
+            0,
+            "XYZ",
+          ),
+        );
+        const sourcePivot = new THREE.Vector3(0, 0, Number(uiState.lightZ || 0));
+        const sourceTranslation = new THREE.Vector3(
+          Number(uiState.lightPosX || 0),
+          Number(uiState.lightPosY || 0),
+          Number(uiState.lightPosZ || 0),
+        );
+        const transformedSourceSamples = sourceRays
+          .map(function (ray) {
+            const points = getRayPoints(ray);
+            const p0 = points.length ? points[0].clone() : null;
+            const d0 = ray?.getDirection ? ray.getDirection().clone() : null;
+            if (!p0 || !d0) return null;
+            const worldPoint = p0.sub(sourcePivot).applyQuaternion(sourceTiltQuat).add(sourcePivot).add(sourceTranslation);
+            const worldDir = d0.applyQuaternion(sourceTiltQuat).normalize();
+            if (!Number.isFinite(worldPoint.x) || !Number.isFinite(worldPoint.y) || !Number.isFinite(worldPoint.z)) return null;
+            if (!Number.isFinite(worldDir.x) || !Number.isFinite(worldDir.y) || !Number.isFinite(worldDir.z)) return null;
+            return { point: worldPoint, dir: worldDir };
+          })
+          .filter(Boolean);
+        const sourcePoints = transformedSourceSamples.map(function (s) { return s.point; });
+        if (sourcePoints.length > 0) {
+          const sourcePointGeometry = new THREE.BufferGeometry().setFromPoints(sourcePoints);
+          const sourcePointMaterial = new THREE.PointsMaterial({
+            color: 0x22d3ee,
+            size: 0.7,
+            sizeAttenuation: true,
+            transparent: true,
+            opacity: 0.95,
+          });
+          const sourcePointCloud = new THREE.Points(sourcePointGeometry, sourcePointMaterial);
+          addSimulationObject(sourcePointCloud);
+          sourcePointCount = sourcePoints.length;
+
+          // Draw source center marker + mean incident direction.
+          const sourceCenter = sourcePoints.reduce(function (acc, p) { return acc.add(p); }, new THREE.Vector3())
+            .multiplyScalar(1 / sourcePoints.length);
+          createMarker(sourceCenter, 0x06b6d4, 0.65);
+          const meanSourceDir = transformedSourceSamples.reduce(function (acc, sample) {
+            if (sample?.dir && sample.dir.lengthSq() > 1e-12) acc.add(sample.dir);
+            return acc;
+          }, new THREE.Vector3());
+          if (meanSourceDir.lengthSq() > 1e-12) {
+            const dir = meanSourceDir.normalize();
+            const arrow = new THREE.ArrowHelper(dir, sourceCenter, 8.0, 0x22d3ee, 1.6, 0.9);
+            addSimulationObject(arrow);
+            sourceDirectionArrowCount = 1;
+          }
+        }
+
         tracedRays.forEach(function (ray) {
           const points = getRayPoints(ray).filter(function (p) {
             return p && Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z);
@@ -1322,7 +1425,10 @@
         "config: model=" + uiState.eyeModel +
         ", eye=(" + uiState.eyeS + "," + uiState.eyeC + "," + uiState.eyeAx + ")" +
         ", eyePrismBase=(" + uiState.eyeP + "Δ@" + uiState.eyePAx + "°)" +
+        ", eyeTilt=(" + uiState.eyeTiltX + "°, " + uiState.eyeTiltY + "°)" +
         ", light=" + uiState.lightSourceType +
+        ", lightPos=(" + uiState.lightPosX + "," + uiState.lightPosY + "," + uiState.lightPosZ + ")" +
+        ", lightTilt=(" + uiState.lightTiltX + "°, " + uiState.lightTiltY + "°)" +
         ", spec=" + (uiState.spectacleEnabled ? "on" : "off") +
         (uiState.spectacleEnabled ? " (base " + uiState.spectacleP + "Δ@" + uiState.spectaclePAx + "°)" : "") +
         ", x-cyl=" + (uiState.crossCylinderEnabled
@@ -1330,6 +1436,8 @@
           : "off") + "\n" +
         "compound(back->front) check:\n" + compoundText + "\n" +
         "rays(simulated/rendered): " + tracedRays.length + " / " + rayCount + "\n" +
+        "source points(rendered): " + sourcePointCount + "\n" +
+        "source direction arrows: " + sourceDirectionArrowCount + "\n" +
         "ray segments: " + raySegmentCount + "\n" +
         "sturm intervals: " + sturmIntervalCount + "\n" +
         "sturm focal lines: " + sturmFocalLineCount + "\n" +

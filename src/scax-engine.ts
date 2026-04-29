@@ -30,10 +30,15 @@ import TABOToDeg from "./utils/tabo-to-deg";
 export type EyeModel = "gullstrand" | "navarro";
 export type PupilType = "constricted" | "neutral" | "dilated";
 
+export type LightSourceTransform = {
+  position?: { x?: number; y?: number; z?: number };
+  tilt?: { x?: number; y?: number };
+};
+
 export type LightSourceConfig =
-  | ({ type: "radial" } & RadialLightSourceProps)
-  | ({ type: "grid" } & GridLightSourceProps)
-  | ({ type: "grid_rg" } & GridRGLightSourceProps);
+  | ({ type: "radial" } & RadialLightSourceProps & LightSourceTransform)
+  | ({ type: "grid" } & GridLightSourceProps & LightSourceTransform)
+  | ({ type: "grid_rg" } & GridRGLightSourceProps & LightSourceTransform);
 
 export type LensConfig = {
   s: number;
@@ -45,11 +50,19 @@ export type LensConfig = {
   tilt: { x: number; y: number };
 };
 
-export type EyePowerInput = { s: number; c: number; ax: number; p?: number; p_ax?: number };
+export type EyeConfig = {
+  s: number;
+  c: number;
+  ax: number;
+  p?: number;
+  p_ax?: number;
+  tilt?: { x?: number; y?: number };
+};
+export type EyePowerInput = EyeConfig;
 
 export type SCAXEngineProps = {
   eyeModel?: EyeModel;
-  eye?: EyePowerInput;
+  eye?: EyeConfig;
   lens?: LensConfig[];
   light_source?: LightSourceConfig;
   pupil_type?: PupilType;
@@ -78,6 +91,7 @@ export type EyeRotationForRender = {
   y_deg: number;
   magnitude_deg: number;
   source_prism: { p: number; p_ax: number };
+  source_tilt: { x: number; y: number };
 };
 
 export type LightDeviation = {
@@ -105,6 +119,7 @@ export default class SCAXEngine {
   private light_source!: LightSource;
   private eyeModelParameter!: EyeModelParameter;
   private tracedRays: Ray[] = [];
+  private lastSourceRaysForSturm: Ray[] = [];
   private sturm: Sturm;
   private affine: Affine;
   private lastSturmGapAnalysis: ReturnType<Sturm["calculate"]> | null = null;
@@ -120,9 +135,14 @@ export default class SCAXEngine {
   private eyeRotationQuaternion!: Quaternion;
   private eyeRotationQuaternionInverse!: Quaternion;
   private eyeRotationPivot!: Vector3;
+  private eyeTiltDeg!: { x: number; y: number };
+  private lightSourcePosition!: Vector3;
+  private lightSourceTiltDeg!: { x: number; y: number };
+  private lightSourceRotationQuaternion!: Quaternion;
+  private lightSourceRotationPivot!: Vector3;
   private currentProps!: {
     eyeModel: EyeModel;
-    eye: Required<EyePowerInput>;
+    eye: Required<EyeConfig>;
     lens: LensConfig[];
     light_source: LightSourceConfig;
     pupil_type: PupilType;
@@ -170,14 +190,33 @@ export default class SCAXEngine {
     this.eyePrismEffectVector = { x: -eyeRx.x, y: -eyeRx.y };
     const eyeRotXDeg = this.prismComponentToAngleDeg(this.eyePrismEffectVector.x);
     const eyeRotYDeg = this.prismComponentToAngleDeg(this.eyePrismEffectVector.y);
+    this.eyeTiltDeg = this.normalizeEyeTilt(eye?.tilt);
+    const eyeEulerXDeg = (-eyeRotYDeg) + this.eyeTiltDeg.x;
+    const eyeEulerYDeg = eyeRotXDeg + this.eyeTiltDeg.y;
     this.eyeRotationQuaternion = new Quaternion().setFromEuler(new Euler(
-      (-eyeRotYDeg * Math.PI) / 180,
-      (eyeRotXDeg * Math.PI) / 180,
+      (eyeEulerXDeg * Math.PI) / 180,
+      (eyeEulerYDeg * Math.PI) / 180,
       0,
       "XYZ",
     ));
     this.eyeRotationQuaternionInverse = this.eyeRotationQuaternion.clone().invert();
     this.eyeRotationPivot = new Vector3(0, 0, SCAXEngine.EYE_ROTATION_PIVOT_FROM_CORNEA_MM);
+    const normalizedLightSourcePose = this.normalizeLightSourcePose(light_source);
+    this.lightSourcePosition = new Vector3(
+      normalizedLightSourcePose.position.x,
+      normalizedLightSourcePose.position.y,
+      normalizedLightSourcePose.position.z,
+    );
+    this.lightSourceTiltDeg = { ...normalizedLightSourcePose.tilt };
+    this.lightSourceRotationQuaternion = new Quaternion().setFromEuler(new Euler(
+      (this.lightSourceTiltDeg.x * Math.PI) / 180,
+      (this.lightSourceTiltDeg.y * Math.PI) / 180,
+      0,
+      "XYZ",
+    ));
+    // Rotate around the light source local center plane (z), not world origin,
+    // so tilt changes orientation without unintentionally translating the source center.
+    this.lightSourceRotationPivot = new Vector3(0, 0, Number((light_source as { z?: number })?.z ?? 0));
     this.lensConfigs = (Array.isArray(lens) ? lens : []).map((spec) => ({
       s: Number(spec?.s ?? 0),
       c: Number(spec?.c ?? 0),
@@ -202,6 +241,7 @@ export default class SCAXEngine {
         ax: Number(eye?.ax ?? 0),
         p: this.normalizePrismAmount(eye?.p),
         p_ax: this.normalizeAngle360(eye?.p_ax),
+        tilt: this.normalizeEyeTilt(eye?.tilt),
       },
       lens: this.lensConfigs.map((spec) => ({
         s: Number(spec.s ?? 0),
@@ -219,7 +259,11 @@ export default class SCAXEngine {
           y: Number(spec.tilt?.y ?? 0),
         },
       })),
-      light_source: { ...light_source } as LightSourceConfig,
+      light_source: {
+        ...light_source,
+        position: { ...normalizedLightSourcePose.position },
+        tilt: { ...normalizedLightSourcePose.tilt },
+      } as LightSourceConfig,
       pupil_type,
     };
     this.lensPowers = this.lensConfigs.map((spec) => ({
@@ -311,16 +355,20 @@ export default class SCAXEngine {
   /**
    * eye.p / eye.p_ax(처방값)를 기준으로, 렌더링에서 바로 쓸 눈 회전량을 반환합니다.
    * - source_prism은 사용자 입력(처방값) 그대로
-   * - x_deg/y_deg는 prismVectorFromBase로 계산된 벡터를 각 축으로 분해한 회전량
+   * - source_tilt는 사용자 입력 eye.tilt(deg) 그대로
+   * - x_deg/y_deg는 프리즘 회전량에 eye.tilt를 합산한 최종 렌더 회전량입니다.
    */
   public getEyeRotationForRender(): EyeRotationForRender {
     const rx = this.prismVectorFromBase(this.eyePrismPrescription.p, this.eyePrismPrescription.p_ax);
     const eyeEffect = this.vectorToPrismInfo(rx.x, rx.y);
+    const xDeg = this.prismComponentToAngleDeg(eyeEffect.x) + this.eyeTiltDeg.y;
+    const yDeg = this.prismComponentToAngleDeg(eyeEffect.y) + this.eyeTiltDeg.x;
     return {
-      x_deg: this.prismComponentToAngleDeg(eyeEffect.x),
-      y_deg: this.prismComponentToAngleDeg(eyeEffect.y),
-      magnitude_deg: this.prismMagnitudeToAngleDeg(eyeEffect.magnitude),
+      x_deg: xDeg,
+      y_deg: yDeg,
+      magnitude_deg: Math.hypot(xDeg, yDeg),
       source_prism: { ...this.eyePrismPrescription },
+      source_tilt: { ...this.eyeTiltDeg },
     };
   }
 
@@ -335,9 +383,11 @@ export default class SCAXEngine {
       const maybeImageSurface = surface as unknown as { clearHitPoints?: () => void };
       if (typeof maybeImageSurface.clearHitPoints === "function") maybeImageSurface.clearHitPoints();
     });
+    const emittedSourceRays = this.light_source.emitRays().map((ray) => this.applyLightSourceTransformToRay(ray));
     const sourceRays = this.hasPupilStop
-      ? this.light_source.emitRays()
-      : this.light_source.emitRays().filter((ray) => this.isRayInsidePupil(ray));
+      ? emittedSourceRays
+      : emittedSourceRays.filter((ray) => this.isRayInsidePupil(ray));
+    this.lastSourceRaysForSturm = sourceRays.map((ray) => ray.clone());
     const traced: Ray[] = [];
 
     for (const sourceRay of sourceRays) {
@@ -388,7 +438,11 @@ export default class SCAXEngine {
   public sturmCalculation(
     rays: Ray[] = this.tracedRays,
   ) {
-    this.lastSturmGapAnalysis = this.sturm.calculate(rays, this.effectiveCylinderFromOpticSurfaces());
+    this.lastSturmGapAnalysis = this.sturm.calculate(
+      rays,
+      this.effectiveCylinderFromOpticSurfaces(),
+      this.lastSourceRaysForSturm,
+    );
     return this.lastSturmGapAnalysis;
   }
 
@@ -514,6 +568,27 @@ export default class SCAXEngine {
     return ((d % 360) + 360) % 360;
   }
 
+  private normalizeEyeTilt(value: EyeConfig["tilt"]) {
+    return {
+      x: Number(value?.x ?? 0),
+      y: Number(value?.y ?? 0),
+    };
+  }
+
+  private normalizeLightSourcePose(value: LightSourceConfig) {
+    return {
+      position: {
+        x: Number(value?.position?.x ?? 0),
+        y: Number(value?.position?.y ?? 0),
+        z: Number(value?.position?.z ?? 0),
+      },
+      tilt: {
+        x: Number(value?.tilt?.x ?? 0),
+        y: Number(value?.tilt?.y ?? 0),
+      },
+    };
+  }
+
   private prismVectorFromBase(prismDiopter: number, baseAngleDeg: number) {
     const p = this.normalizePrismAmount(prismDiopter);
     const baseAngle = this.normalizeAngle360(baseAngleDeg);
@@ -588,6 +663,21 @@ export default class SCAXEngine {
     return point.clone().sub(pivot).applyQuaternion(rotation).add(pivot);
   }
 
+  private translateRay(ray: Ray, offset: Vector3) {
+    if (offset.lengthSq() < 1e-12) return ray;
+    const points = this.getRayPoints(ray);
+    if (!points.length) return ray;
+    const translated = ray.clone();
+    const translatedState = translated as unknown as {
+      points?: Vector3[];
+      origin?: Vector3;
+    };
+    const nextPoints = points.map((point) => point.clone().add(offset));
+    translatedState.points = nextPoints;
+    translatedState.origin = nextPoints[nextPoints.length - 1].clone();
+    return translated;
+  }
+
   private transformRayAroundPivot(ray: Ray, rotation: Quaternion, pivot: Vector3) {
     const points = this.getRayPoints(ray);
     if (!points.length) return ray;
@@ -602,6 +692,15 @@ export default class SCAXEngine {
     transformedState.direction = ray.getDirection().clone().applyQuaternion(rotation).normalize();
     transformedState.origin = nextPoints[nextPoints.length - 1].clone();
     return transformed;
+  }
+
+  private applyLightSourceTransformToRay(ray: Ray) {
+    const rotated = this.transformRayAroundPivot(
+      ray,
+      this.lightSourceRotationQuaternion,
+      this.lightSourceRotationPivot,
+    );
+    return this.translateRay(rotated, this.lightSourcePosition);
   }
 
   private calculateLightDeviation(): LightDeviation {

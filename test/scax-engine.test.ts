@@ -139,6 +139,18 @@ describe("SCAXEngine", () => {
       expect(Math.abs(rotation.magnitude_deg)).toBeCloseTo(0.57, 1);
     });
 
+    it("eye tilt 입력은 프리즘 변환 없이 회전에 그대로 반영된다", () => {
+      const simulator = new SCAXEngine({
+        eye: { s: 0, c: 0, ax: 0, p: 0, p_ax: 0, tilt: { x: 3, y: -2 } },
+        light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
+      });
+      const rotation = simulator.getEyeRotationForRender();
+      expect(rotation.source_tilt.x).toBe(3);
+      expect(rotation.source_tilt.y).toBe(-2);
+      expect(rotation.x_deg).toBeCloseTo(-2, 8);
+      expect(rotation.y_deg).toBeCloseTo(3, 8);
+    });
+
     it("순수 프리즘 렌즈(S=0,C=0)도 Base 기준 반대방향으로 광선을 편위시킨다", () => {
       const noPrism = new SCAXEngine({
         eye: { s: 0, c: 0, ax: 0, p: 0, p_ax: 0 },
@@ -197,6 +209,87 @@ describe("SCAXEngine", () => {
       const withEyePrismSim = withEyePrism.simulate();
       expect(withEyePrismSim.light_deviation.eye_prism_effect.magnitude).toBeCloseTo(2, 8);
       expect(withEyePrism.getEyeRotationForRender().magnitude_deg).toBeGreaterThan(0);
+    });
+
+    it("light_source의 position/tilt가 광로와 진행 방향에 반영된다", () => {
+      const base = new SCAXEngine({
+        eye: { s: 0, c: 0, ax: 0, p: 0, p_ax: 0 },
+        lens: [],
+        light_source: {
+          type: "radial",
+          radius: 0,
+          division: 4,
+          angle_division: 8,
+          z: -20,
+          vergence: 0,
+        },
+      });
+      const simulator = new SCAXEngine({
+        eye: { s: 0, c: 0, ax: 0, p: 0, p_ax: 0 },
+        lens: [],
+        light_source: {
+          type: "radial",
+          radius: 0,
+          division: 4,
+          angle_division: 8,
+          z: -20,
+          vergence: 0,
+          position: { x: 3, y: -2, z: 1 },
+          tilt: { x: 0, y: 10 },
+        },
+      });
+
+      const baseRay = base.rayTracing()[0];
+      const firstRay = simulator.rayTracing()[0];
+      const baseState = baseRay as unknown as { points?: Array<{ x: number; y: number; z: number }> };
+      const state = firstRay as unknown as { points?: Array<{ x: number; y: number; z: number }> };
+      const baseOrigin = baseState.points?.[0];
+      const origin = state.points?.[0];
+      const baseDirection = baseRay?.getDirection();
+      const direction = firstRay?.getDirection();
+
+      expect(baseOrigin).toBeDefined();
+      expect(origin).toBeDefined();
+      expect(baseDirection).toBeDefined();
+      expect(direction).toBeDefined();
+      expect(Math.abs(origin!.x - baseOrigin!.x)).toBeGreaterThan(1e-3);
+      expect(Math.abs(origin!.y - baseOrigin!.y)).toBeGreaterThan(1e-3);
+      expect(direction!.x).toBeGreaterThan(baseDirection!.x + 1e-4);
+      expect(direction!.z).toBeLessThan(baseDirection!.z - 1e-4);
+    });
+
+    it("off-axis 광원에서도 Sturm 중심점이 안정적으로 계산된다", () => {
+      const simulator = new SCAXEngine({
+        eye: { s: 0, c: 0, ax: 0, p: 0, p_ax: 0 },
+        lens: [],
+        light_source: {
+          type: "grid",
+          width: 8,
+          height: 8,
+          division: 8,
+          z: -20,
+          vergence: 0,
+          position: { x: 2, y: -1.5, z: 0 },
+          tilt: { x: 4, y: 9 },
+        },
+      });
+
+      const traced = simulator.rayTracing();
+      const sturm = simulator.sturmCalculation(traced) as {
+        sturm_info?: Array<{
+          line: string;
+          approx_center?: { x: number; y: number; z: number } | null;
+          method?: string;
+        }>;
+      };
+      const dLine = (sturm.sturm_info ?? []).find((item) => item.line === "d");
+      expect(traced.length).toBeGreaterThan(0);
+      expect(dLine).toBeDefined();
+      expect(dLine?.method).toBe("minimum-ellipse");
+      expect(dLine?.approx_center).not.toBeNull();
+      expect(Number.isFinite(dLine?.approx_center?.x)).toBe(true);
+      expect(Number.isFinite(dLine?.approx_center?.y)).toBe(true);
+      expect(Number.isFinite(dLine?.approx_center?.z)).toBe(true);
     });
   });
 });
