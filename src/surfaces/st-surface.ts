@@ -32,6 +32,7 @@ export type STSurfaceProps = {
 }
 
 export default class STSurface extends Surface {
+  private static readonly POWER_EPS_D = ST_POWER_EPS_D;
   private s: number = 0;
   private c: number = 0;
   private ax: number = 0;
@@ -278,7 +279,29 @@ export default class STSurface extends Surface {
     return a / den;
   }
 
+  private isOpticallyNeutral() {
+    return (
+      Math.abs(Number(this.s) || 0) < STSurface.POWER_EPS_D
+      && Math.abs(Number(this.c) || 0) < STSurface.POWER_EPS_D
+    );
+  }
+
   refract(ray: Ray): Ray | null {
+    // 무도수 ST면은 기하(면 위치/경사)는 유지하되 굴절력은 0으로 취급하여 직진 통과시킵니다.
+    if (this.isOpticallyNeutral()) {
+      const direction = ray.getDirection().normalize();
+      const passthrough = ray.clone();
+      const hitPoint = this.front.incident(ray);
+      if (hitPoint) {
+        passthrough.appendPoint(hitPoint);
+        passthrough.continueFrom(
+          hitPoint.clone().addScaledVector(direction, RAY_SURFACE_ESCAPE_MM),
+          direction,
+        );
+      }
+      this.refractedRays.push(passthrough.clone());
+      return passthrough;
+    }
     this.applyChromaticIndicesToSubSurfaces(ray);
     // 원통 성분이 없으면 단일(구면)면으로 처리합니다.
     if (!this.back) {

@@ -15,7 +15,6 @@ import {
   PUPIL_SIZE,
   RAY_SURFACE_ESCAPE_MM,
   SPECTACLE_VERTEX_DISTANCE_MM,
-  ST_POWER_EPS_D,
 } from "./parameters/constants";
 import { EyeModelParameter } from "./parameters/eye/eyemodel-parameter";
 import { GullstrandParameter } from "./parameters/eye/gullstrand-parameter";
@@ -281,27 +280,20 @@ export default class SCAXEngine {
     // "none"은 동공 제한을 완전히 비활성화합니다.
     this.pupilDiameterMm = pupil_type === "none" ? 0 : Number(PUPIL_SIZE[pupil_type]);
     this.eyeModelParameter = eyeModel === "gullstrand" ? new GullstrandParameter() : new NavarroParameter();
-    const hasEyeCompensationPower = (
-      Math.abs(Number(this.eyePower.s) || 0) >= ST_POWER_EPS_D
-      || Math.abs(Number(this.eyePower.c) || 0) >= ST_POWER_EPS_D
-    );
-    this.surfaces = this.eyeModelParameter.createSurface();
-    if (hasEyeCompensationPower) {
-      const eyeSt = new STSurface({
-        type: "compound",
-        name: "eye_st",
-        position: { x: 0, y: 0, z: -EYE_ST_SURFACE_OFFSET_MM },
-        referencePoint: { x: 0, y: 0, z: 0 },
-        tilt: { x: 0, y: 0 },
-        s: this.eyePower.s,
-        c: this.eyePower.c,
-        ax: this.eyePower.ax,
-        n_before: FRAUNHOFER_REFRACTIVE_INDICES.air,
-        n: FRAUNHOFER_REFRACTIVE_INDICES.cornea,
-        n_after: FRAUNHOFER_REFRACTIVE_INDICES.aqueous,
-      });
-      this.surfaces = [eyeSt, ...this.surfaces];
-    }
+    const eyeSt = new STSurface({
+      type: "compound",
+      name: "eye_st",
+      position: { x: 0, y: 0, z: -EYE_ST_SURFACE_OFFSET_MM },
+      referencePoint: { x: 0, y: 0, z: 0 },
+      tilt: { x: 0, y: 0 },
+      s: this.eyePower.s,
+      c: this.eyePower.c,
+      ax: this.eyePower.ax,
+      n_before: FRAUNHOFER_REFRACTIVE_INDICES.air,
+      n: FRAUNHOFER_REFRACTIVE_INDICES.cornea,
+      n_after: FRAUNHOFER_REFRACTIVE_INDICES.aqueous,
+    });
+    this.surfaces = [eyeSt, ...this.eyeModelParameter.createSurface()];
     this.hasPupilStop = false;
     if (Number.isFinite(this.pupilDiameterMm) && (this.pupilDiameterMm as number) > 0) {
       const pupilStop = new ApertureStopSurface({
@@ -321,25 +313,25 @@ export default class SCAXEngine {
       this.hasPupilStop = true;
     }
     this.lens = this.lensConfigs.map((spec, index) => new STSurface({
-      type: "compound",
-      name: `lens_st_${index + 1}`,
-      position: {
-        x: spec.position.x,
-        y: spec.position.y,
-        z: spec.position.z,
-      },
-      tilt: { x: spec.tilt.x, y: spec.tilt.y },
-      // Spectacle ST rule:
-      // 1) back surface is fixed at vertex distance(position.z)
-      // 2) back-front gap is optimized (thickness=0 => auto)
-      thickness: 0,
-      s: Number(spec?.s ?? 0),
-      c: Number(spec?.c ?? 0),
-      ax: Number(spec?.ax ?? 0),
-      n_before: FRAUNHOFER_REFRACTIVE_INDICES.air,
-      n: FRAUNHOFER_REFRACTIVE_INDICES.crown_glass,
-      n_after: FRAUNHOFER_REFRACTIVE_INDICES.air,
-    }));
+        type: "compound",
+        name: `lens_st_${index + 1}`,
+        position: {
+          x: spec.position.x,
+          y: spec.position.y,
+          z: spec.position.z,
+        },
+        tilt: { x: spec.tilt.x, y: spec.tilt.y },
+        // Spectacle ST rule:
+        // 1) back surface is fixed at vertex distance(position.z)
+        // 2) back-front gap is optimized (thickness=0 => auto)
+        thickness: 0,
+        s: Number(spec?.s ?? 0),
+        c: Number(spec?.c ?? 0),
+        ax: Number(spec?.ax ?? 0),
+        n_before: FRAUNHOFER_REFRACTIVE_INDICES.air,
+        n: FRAUNHOFER_REFRACTIVE_INDICES.crown_glass,
+        n_after: FRAUNHOFER_REFRACTIVE_INDICES.air,
+      }));
     this.light_source = light_source.type === "radial"
       ? new RadialLightSource(light_source as RadialLightSourceProps)
       : light_source.type === "grid_rg"
