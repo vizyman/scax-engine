@@ -1,6 +1,6 @@
 # scax-engine
 
-TypeScript optical simulation library for a model eye (Gullstrand / Navarro): ray tracing, Sturm interval analysis, affine distortion estimation, and induced astigmatism / prism deviation. Ships ESM, CJS, and UMD builds.
+TypeScript ophthalmic-optics simulation library for a model eye (Gullstrand / Navarro, monocular OD baseline): ray tracing, Sturm interval analysis, affine distortion estimation, and induced astigmatism / prism deviation. Ships ESM, CJS, and UMD builds.
 
 Korean documentation: [README.md](README.md)
 
@@ -8,12 +8,6 @@ Korean documentation: [README.md](README.md)
 
 - **Node.js** 20 or later (local development and tests)
 - Runtime dependency: **three** (declared by this package)
-
-## Roadmap
-
-- Accuracy improves as rays become more paraxial.
-- This project supports monocular visualization.
-- Add power is not planned due to limitations of the model eye.
 
 ## Install
 
@@ -77,7 +71,7 @@ Creates a simulation engine instance. Internal `Sturm` and `Affine` helpers are 
   - `tilt?: { x?: number; y?: number }` — degrees; folded into render rotation / eye pose.
 - `lens?: LensConfig[]` (default: `[]`)
   - `LensConfig = { s, c, ax, p?, p_ax?, position: { x, y, z }, tilt: { x, y } }`
-  - If `position.z` is omitted, the default spectacle **vertex distance 12 mm** is used.
+  - If `position.z` is omitted, the default spectacle vertex distance (**VD**) of **12 mm** is used.
 - `light_source?: LightSourceConfig`
   - Grid: `{ type: "grid", width, height, division, z, vergence, position?, tilt? }`
   - Chromatic grid: `{ type: "grid_rg", ... }` — for each grid point, emits Fraunhofer **e**- and **C**-line rays (`division` must be greater than 4).

@@ -1,6 +1,6 @@
 # scax-engine
 
-눈 모델(Gullstrand / Navarro)에 대한 광선 추적, Sturm 간격 분석, 아핀 왜곡 추정, 유발 난시·프리즘 편위 계산을 제공하는 TypeScript 광학 시뮬레이션 라이브러리입니다. ESM, CJS, UMD 빌드를 지원합니다.
+눈 모델(Gullstrand / Navarro)에 대한 광선 추적, Sturm 간격 분석, 아핀 왜곡 추정, 유발 난시·프리즘 편위 계산을 제공하는 TypeScript 안경광학 시뮬레이션(단안 기준, OD) 라이브러리입니다. ESM, CJS, UMD 빌드를 지원합니다.
 
 English documentation: [README-en.md](README-en.md)
 
@@ -9,11 +9,6 @@ English documentation: [README-en.md](README-en.md)
 - **Node.js** 20 이상(로컬 개발·테스트)
 - 런타임 의존성: **three** (패키지에 포함됨)
 
-## Roadmap
-
-- 근축광선일수록 정확도가 높아집니다.
-- 이 프로젝트는 단안 시각화를 지원합니다.
-- 모형안 모델의 한계로 가입도(Add)는 지원 계획이 없습니다.
 
 ## 설치
 
@@ -84,7 +79,7 @@ const next = engine.simulate();
   - Radial: `{ type: "radial", radius, division, angle_division, z, vergence, position?, tilt? }`
   - 공통으로 `position`·`tilt`(도)를 두면 광원 기준 위치·기울기를 바꿀 수 있습니다.
   - 기본값: `{ type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 }`
-- `pupil_type?: "constricted" | "neutral" | "dilated" | "none"` (기본값: `"neutral"`)
+- `pupil_type?: "constricted"(2.5 mm) | "neutral"(4.0 mm) | "dilated"(6.0 mm) | "none"(0 mm)` (기본값: `"neutral"`)
   - `"none"`이면 동공(입사 구경) 제한을 끕니다.
 
 동일한 `props` 규칙이 `update()`에도 적용됩니다. 부분 객체만 넘기면 생략된 최상위 키는 이전 `update` 값이 아니라 **항상 기본값**으로 채워지므로, 한 필드만 바꾸려면 앱에서 전체 `props`를 조립해 넘기는 것이 안전합니다.
