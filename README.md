@@ -72,7 +72,7 @@ const next = engine.simulate();
   - `tilt?: { x?: number; y?: number }` — 각도(도); 렌더 회전·눈 자세에 반영됩니다.
 - `lens?: LensConfig[]` (기본값: `[]`)
   - `LensConfig = { s, c, ax, p?, p_ax?, position: { x, y, z }, tilt: { x, y } }`
-  - `position.z`를 생략하면 안경 전점 거리 기본값 **12 mm**가 적용됩니다.
+  - `position.z`를 생략하면 안경 정간 거리(VD) 기본값 **12 mm**가 적용됩니다.
 - `light_source?: LightSourceConfig`
   - Grid: `{ type: "grid", width, height, division, z, vergence, position?, tilt? }`
   - Grid (색수차): `{ type: "grid_rg", ... }` — 격자 각 점에서 Fraunhofer **e**선·**C**선 광선을 함께 생성합니다(`division`은 4보다 커야 함).
