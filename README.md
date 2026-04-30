@@ -148,10 +148,6 @@ const next = engine.simulate();
 
 - `getAffineAnalysis()` — 현재 설정으로 망막 대응점 쌍을 만들어 아핀 적합을 수행(또는 캐시 재사용)합니다. 유효한 쌍이 부족하면 `null`이 될 수 있습니다.
 
-- `estimateAffineDistortion(pairs)` — 직접 `AffinePair[]`를 넘겨 2D 아핀을 적합합니다.
-
-- `calculateInducedAstigmatism(eye, lens)` — 주어진 굴절력으로 유발 난시 요약을 계산합니다(`simulate` 내부에서도 사용).
-
 ## UMD
 
 UMD 빌드는 `dist/scax-engine.umd.js`에 생성되며 전역 이름 **`ScaxEngine`**으로 노출됩니다.

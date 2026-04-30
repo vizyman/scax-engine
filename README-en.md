@@ -147,10 +147,6 @@ Releases per-instance tracing/analysis caches and per-surface trace history.
 
 - `getAffineAnalysis()` — builds retina correspondence pairs for the current setup, fits an affine map (or returns cache). May be `null` when there are not enough valid pairs.
 
-- `estimateAffineDistortion(pairs)` — fit a 2D affine from your own `AffinePair[]`.
-
-- `calculateInducedAstigmatism(eye, lens)` — induced astigmatism summary for supplied powers (also used inside `simulate`).
-
 ## UMD
 
 The UMD bundle is written to `dist/scax-engine.umd.js` and exposes the global **`ScaxEngine`**.

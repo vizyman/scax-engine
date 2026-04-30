@@ -101,14 +101,10 @@ describe("시뮬레이션 품질 검증 세트", () => {
     }
   });
 
-  it("난시 축 180도 주기성(axis, axis+180)이 동일 유발난시를 만든다", () => {
-    const engine = createEngine("gullstrand", { s: 0, c: 0, ax: 0 });
-    const base = engine.calculateInducedAstigmatism({ s: 0, c: -1.75, ax: 25 }, []);
-    const wrapped = engine.calculateInducedAstigmatism({ s: 0, c: -1.75, ax: 205 }, []);
-    expect(base.induced).not.toBeNull();
-    expect(wrapped.induced).not.toBeNull();
-    expect(base.induced!.d).toBeCloseTo(wrapped.induced!.d, 10);
-    expect(base.induced!.tabo_deg).toBeCloseTo(wrapped.induced!.tabo_deg, 10);
+  it("난시 축 180도 주기성(axis, axis+180)에서 simulate 난시 요약이 동일하다", () => {
+    const base = createEngine("gullstrand", { s: 0, c: -1.75, ax: 25 }).simulate();
+    const wrapped = createEngine("gullstrand", { s: 0, c: -1.75, ax: 205 }).simulate();
+    expect(base.info.astigmatism.combined[0]).toEqual(wrapped.info.astigmatism.combined[0]);
   });
 
   it("동일 입력 반복 실행 시 광선 수와 초점 위치가 안정적으로 재현된다", () => {
@@ -142,13 +138,12 @@ describe("시뮬레이션 품질 검증 세트", () => {
       const model: EyeModel = next() > 0.5 ? "gullstrand" : "navarro";
       const engine = createEngine(model, eye, lens);
       const centerZ = extractDLineCenterZ(engine);
-      const induced = engine.calculateInducedAstigmatism(eye, lens);
-
       expect(Number.isFinite(centerZ)).toBe(true);
-      if (induced.induced) {
-        expect(Number.isFinite(induced.induced.d)).toBe(true);
-        expect(Number.isFinite(induced.induced.tabo_deg)).toBe(true);
-      }
+      const combinedMeridians = engine.simulate().info.astigmatism.combined[0] ?? [];
+      expect(Array.isArray(combinedMeridians)).toBe(true);
+      expect(combinedMeridians.length).toBe(2);
+      expect(Number.isFinite(combinedMeridians[0]?.d)).toBe(true);
+      expect(Number.isFinite(combinedMeridians[1]?.d)).toBe(true);
     }
   });
 });

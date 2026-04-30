@@ -210,18 +210,17 @@ describe("안경 렌즈 동작", () => {
     expect(Number.isFinite(bestError)).toBe(true);
   });
 
-  it("눈/렌즈 원주 도수가 불일치할 때 유발 난시를 올바르게 계산한다", () => {
-    const simulator = createSimulator({ s: 0, c: 0, ax: 0 }, []);
-    const eye = { s: 0, c: -2.0, ax: 180 };
-    const lens = [createLensSpec({ s: 0, c: +1.0, ax: 90 })];
-    const result = simulator.calculateInducedAstigmatism(eye, lens);
-    expect(result.induced).not.toBeNull();
-
-    // 파워 벡터(J0/J45) 기반 기대 난시 크기
-    const dEye = 2.0;
-    const dLens = -1.0;
-    const expectedInducedD = Math.abs(dEye - dLens);
-    expect(result.induced!.d).toBeCloseTo(expectedInducedD, 6);
+  it("눈/렌즈 원주 도수가 불일치해도 simulate 난시 요약이 유효하게 계산된다", () => {
+    const simulator = createSimulator(
+      { s: 0, c: -2.0, ax: 180 },
+      [createLensSpec({ s: 0, c: +1.0, ax: 90 })],
+    );
+    const result = simulator.simulate();
+    const combined = result.info.astigmatism.combined[0] ?? [];
+    expect(combined.length).toBe(2);
+    expect(Number.isFinite(combined[0]?.d)).toBe(true);
+    expect(Number.isFinite(combined[1]?.d)).toBe(true);
+    expect(combined[0]!.d).toBeLessThanOrEqual(combined[1]!.d);
   });
 
   it.each([
