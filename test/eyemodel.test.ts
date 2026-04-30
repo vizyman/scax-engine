@@ -37,7 +37,7 @@ function injectDeterministicRays(simulator: SCAXEngine) {
       }));
     }
   }
-  (simulator as unknown as { light_source: { emitRays: () => Ray[] } }).light_source = {
+  (simulator as unknown as { core: { light_source: { emitRays: () => Ray[] } } }).core.light_source = {
     emitRays: () => rays.map((ray) => ray.clone()),
   };
 }

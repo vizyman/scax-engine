@@ -51,7 +51,7 @@ function injectSingleChiefRay(simulator: SCAXEngine) {
     direction: new Vector3(0, 0, 1),
     frounhofer_line: "d",
   });
-  (simulator as unknown as { light_source: { emitRays: () => Ray[] } }).light_source = {
+  (simulator as unknown as { core: { light_source: { emitRays: () => Ray[] } } }).core.light_source = {
     emitRays: () => [ray.clone()],
   };
 }
@@ -95,13 +95,13 @@ function injectDeterministicRays(simulator: SCAXEngine) {
       }));
     }
   }
-  (simulator as unknown as { light_source: { emitRays: () => Ray[] } }).light_source = {
+  (simulator as unknown as { core: { light_source: { emitRays: () => Ray[] } } }).core.light_source = {
     emitRays: () => rays.map((ray) => ray.clone()),
   };
 }
 
 function applyLensDecenterX(simulator: SCAXEngine, decenterMm: number) {
-  const lenses = (simulator as unknown as { lens: unknown[] }).lens;
+  const lenses = (simulator as unknown as { core: { lens: unknown[] } }).core.lens;
   for (const lens of lenses) {
     const mutable = lens as {
       sphericalSurface?: { position?: Vector3 };
@@ -115,7 +115,7 @@ function applyLensDecenterX(simulator: SCAXEngine, decenterMm: number) {
 }
 
 function applyLensDecenterY(simulator: SCAXEngine, decenterMm: number) {
-  const lenses = (simulator as unknown as { lens: unknown[] }).lens;
+  const lenses = (simulator as unknown as { core: { lens: unknown[] } }).core.lens;
   for (const lens of lenses) {
     const mutable = lens as {
       sphericalSurface?: { position?: Vector3 };
@@ -129,7 +129,7 @@ function applyLensDecenterY(simulator: SCAXEngine, decenterMm: number) {
 }
 
 function applyLensTiltY(simulator: SCAXEngine, tiltDeg: number) {
-  const lenses = (simulator as unknown as { lens: unknown[] }).lens;
+  const lenses = (simulator as unknown as { core: { lens: unknown[] } }).core.lens;
   for (const lens of lenses) {
     const mutable = lens as {
       tilt?: { y: number };

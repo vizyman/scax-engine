@@ -104,9 +104,17 @@ const next = engine.simulate();
 
 - `Sturm`, `Affine` 인스턴스는 재생성되지 않지만, `update` 직후에는 Sturm·affine 분석 캐시가 비워지며 `simulate` 등으로 다시 채워집니다.
 
+### `engine.dispose()`
+
+엔진 인스턴스가 잡고 있던 추적/분석 캐시와 표면 trace history를 정리합니다.
+
+- 해제 대상: traced rays, Sturm/affine 캐시, surface incident/refracted history
+- UI에서 엔진을 자주 새로 만들 때(예: 프레임별/슬라이더 연속 갱신) 이전 인스턴스에 `dispose()`를 호출하면 메모리 사용량을 안정적으로 유지할 수 있습니다.
+
 ### 인스턴스 메서드
 
 - `update(props?)` — 위와 동일.
+- `dispose()` — 내부 캐시와 표면 trace history를 정리합니다.
 
 - `simulate()`
   ```ts
@@ -145,7 +153,7 @@ const next = engine.simulate();
 
 - `getAffineAnalysis()` — 현재 설정으로 망막 대응점 쌍을 만들어 아핀 적합을 수행(또는 캐시 재사용)합니다. 유효한 쌍이 부족하면 `null`이 될 수 있습니다.
 
-- `estimateAffineDistortion(pairs)` / `affine2d(pairs)` — 직접 `AffinePair[]`를 넘겨 2D 아핀을 적합합니다. `affine2d`는 호환용 별칭입니다.
+- `estimateAffineDistortion(pairs)` — 직접 `AffinePair[]`를 넘겨 2D 아핀을 적합합니다.
 
 - `calculateInducedAstigmatism(eye, lens)` — 주어진 굴절력으로 유발 난시 요약을 계산합니다(`simulate` 내부에서도 사용).
 

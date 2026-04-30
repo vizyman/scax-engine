@@ -104,9 +104,17 @@ Re-runs the same configuration path as the constructor: rebuilds eye, lens, surf
 
 - `Sturm` and `Affine` instances are not recreated, but cached Sturm / affine results are cleared until you run `simulate` (or equivalent) again.
 
+### `engine.dispose()`
+
+Releases per-instance tracing/analysis caches and per-surface trace history.
+
+- Clears traced rays, cached Sturm/affine results, and surface incident/refracted history.
+- In UI flows that create engines frequently (e.g., continuous slider updates), call `dispose()` on stale instances to keep memory usage stable.
+
 ### Instance methods
 
 - `update(props?)` — same as above.
+- `dispose()` — clears internal caches and surface trace history.
 
 - `simulate()`
   ```ts
@@ -145,7 +153,7 @@ Re-runs the same configuration path as the constructor: rebuilds eye, lens, surf
 
 - `getAffineAnalysis()` — builds retina correspondence pairs for the current setup, fits an affine map (or returns cache). May be `null` when there are not enough valid pairs.
 
-- `estimateAffineDistortion(pairs)` / `affine2d(pairs)` — fit a 2D affine from your own `AffinePair[]`. `affine2d` is a compatibility alias.
+- `estimateAffineDistortion(pairs)` — fit a 2D affine from your own `AffinePair[]`.
 
 - `calculateInducedAstigmatism(eye, lens)` — induced astigmatism summary for supplied powers (also used inside `simulate`).
 

@@ -48,6 +48,11 @@ export default class SphericalImageSurface extends Surface {
     this.hitPoints = [];
   }
 
+  public override clearTraceHistory() {
+    super.clearTraceHistory();
+    this.clearHitPoints();
+  }
+
   incident(ray: Ray): Vector3 | null {
     const origin = ray.endPoint();
     const direction = ray.getDirection().normalize();

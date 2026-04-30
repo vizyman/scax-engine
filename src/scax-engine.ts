@@ -159,6 +159,8 @@ export class SCAXEngineCore {
   private lightSourceTiltDeg!: { x: number; y: number };
   private lightSourceRotationQuaternion!: Quaternion;
   private lightSourceRotationPivot!: Vector3;
+  private sortedLensSurfaces: Surface[] = [];
+  private sortedEyeSurfaces: Surface[] = [];
   private currentProps!: {
     eyeModel: EyeModel;
     eye: Required<EyeConfig>;
@@ -181,6 +183,20 @@ export class SCAXEngineCore {
     this.configure(props);
   }
 
+  public dispose() {
+    [...this.lens, ...this.surfaces].forEach((surface) => {
+      surface.clearTraceHistory();
+    });
+    this.tracedRays = [];
+    this.lastSourceRaysForSturm = [];
+    this.lastSturmGapAnalysis = null;
+    this.lastAffineAnalysis = null;
+    this.surfaces = [];
+    this.lens = [];
+    this.sortedEyeSurfaces = [];
+    this.sortedLensSurfaces = [];
+  }
+
   private configure(props: SCAXEngineProps = {}) {
     this.lastSturmGapAnalysis = null;
     this.lastAffineAnalysis = null;
@@ -192,13 +208,13 @@ export class SCAXEngineCore {
       pupil_type = "neutral",
     } = props;
     this.eyeModel = eyeModel;
-    const normalizedEyeSphere = Number(eye?.s ?? 0) + (eyeModel === "gullstrand" ? -1 : 0);
+    const normalizedEyeSphere = this.toFiniteNumber(eye?.s) + (eyeModel === "gullstrand" ? -1 : 0);
     // eye 입력은 auto refractor(굴절오차) 기준이므로,
     // 광학면에 적용할 때는 보정렌즈 파워 관점으로 부호를 반전합니다.
     this.eyePower = {
       s: -normalizedEyeSphere,
-      c: -Number(eye?.c ?? 0),
-      ax: Number(eye?.ax ?? 0),
+      c: -this.toFiniteNumber(eye?.c),
+      ax: this.toFiniteNumber(eye?.ax),
     };
     this.eyePrismPrescription = {
       p: this.normalizePrismAmount(eye?.p),
@@ -235,47 +251,47 @@ export class SCAXEngineCore {
     ));
     // Rotate around the light source local center plane (z), not world origin,
     // so tilt changes orientation without unintentionally translating the source center.
-    this.lightSourceRotationPivot = new Vector3(0, 0, Number((light_source as { z?: number })?.z ?? 0));
+    this.lightSourceRotationPivot = new Vector3(0, 0, this.toFiniteNumber((light_source as { z?: number })?.z));
     this.lensConfigs = (Array.isArray(lens) ? lens : []).map((spec) => ({
-      s: Number(spec?.s ?? 0),
-      c: Number(spec?.c ?? 0),
-      ax: Number(spec?.ax ?? 0),
+      s: this.toFiniteNumber(spec?.s),
+      c: this.toFiniteNumber(spec?.c),
+      ax: this.toFiniteNumber(spec?.ax),
       p: this.normalizePrismAmount(spec?.p),
       p_ax: this.normalizeAngle360(spec?.p_ax),
       position: {
-        x: Number(spec?.position?.x ?? 0),
-        y: Number(spec?.position?.y ?? 0),
-        z: Number(spec?.position?.z ?? SPECTACLE_VERTEX_DISTANCE_MM),
+        x: this.toFiniteNumber(spec?.position?.x),
+        y: this.toFiniteNumber(spec?.position?.y),
+        z: this.toFiniteNumber(spec?.position?.z, SPECTACLE_VERTEX_DISTANCE_MM),
       },
       tilt: {
-        x: Number(spec?.tilt?.x ?? 0),
-        y: Number(spec?.tilt?.y ?? 0),
+        x: this.toFiniteNumber(spec?.tilt?.x),
+        y: this.toFiniteNumber(spec?.tilt?.y),
       },
     }));
     this.currentProps = {
       eyeModel,
       eye: {
-        s: Number(eye?.s ?? 0),
-        c: Number(eye?.c ?? 0),
-        ax: Number(eye?.ax ?? 0),
+        s: this.toFiniteNumber(eye?.s),
+        c: this.toFiniteNumber(eye?.c),
+        ax: this.toFiniteNumber(eye?.ax),
         p: this.normalizePrismAmount(eye?.p),
         p_ax: this.normalizeAngle360(eye?.p_ax),
         tilt: this.normalizeEyeTilt(eye?.tilt),
       },
       lens: this.lensConfigs.map((spec) => ({
-        s: Number(spec.s ?? 0),
-        c: Number(spec.c ?? 0),
-        ax: Number(spec.ax ?? 0),
+        s: this.toFiniteNumber(spec.s),
+        c: this.toFiniteNumber(spec.c),
+        ax: this.toFiniteNumber(spec.ax),
         p: this.normalizePrismAmount(spec.p),
         p_ax: this.normalizeAngle360(spec.p_ax),
         position: {
-          x: Number(spec.position?.x ?? 0),
-          y: Number(spec.position?.y ?? 0),
-          z: Number(spec.position?.z ?? SPECTACLE_VERTEX_DISTANCE_MM),
+          x: this.toFiniteNumber(spec.position?.x),
+          y: this.toFiniteNumber(spec.position?.y),
+          z: this.toFiniteNumber(spec.position?.z, SPECTACLE_VERTEX_DISTANCE_MM),
         },
         tilt: {
-          x: Number(spec.tilt?.x ?? 0),
-          y: Number(spec.tilt?.y ?? 0),
+          x: this.toFiniteNumber(spec.tilt?.x),
+          y: this.toFiniteNumber(spec.tilt?.y),
         },
       })),
       light_source: {
@@ -286,9 +302,9 @@ export class SCAXEngineCore {
       pupil_type,
     };
     this.lensPowers = this.lensConfigs.map((spec) => ({
-      s: Number(spec?.s ?? 0),
-      c: Number(spec?.c ?? 0),
-      ax: Number(spec?.ax ?? 0),
+      s: this.toFiniteNumber(spec?.s),
+      c: this.toFiniteNumber(spec?.c),
+      ax: this.toFiniteNumber(spec?.ax),
     }));
     // eye/lens prism axis는 모두 임상 Base 방향(렌즈->각막 시점)으로 입력합니다.
     // 내부 광선 편향 벡터는 Base의 반대방향(= +180° 변환)으로 계산합니다.
@@ -332,30 +348,31 @@ export class SCAXEngineCore {
       this.hasPupilStop = true;
     }
     this.lens = this.lensConfigs.map((spec, index) => new STSurface({
-        type: "compound",
-        name: `lens_st_${index + 1}`,
-        position: {
-          x: spec.position.x,
-          y: spec.position.y,
-          z: spec.position.z,
-        },
-        tilt: { x: spec.tilt.x, y: spec.tilt.y },
-        // Spectacle ST rule:
-        // 1) back surface is fixed at vertex distance(position.z)
-        // 2) back-front gap is optimized (thickness=0 => auto)
-        thickness: 0,
-        s: Number(spec?.s ?? 0),
-        c: Number(spec?.c ?? 0),
-        ax: Number(spec?.ax ?? 0),
-        n_before: FRAUNHOFER_REFRACTIVE_INDICES.air,
-        n: FRAUNHOFER_REFRACTIVE_INDICES.crown_glass,
-        n_after: FRAUNHOFER_REFRACTIVE_INDICES.air,
-      }));
+      type: "compound",
+      name: `lens_st_${index + 1}`,
+      position: {
+        x: spec.position.x,
+        y: spec.position.y,
+        z: spec.position.z,
+      },
+      tilt: { x: spec.tilt.x, y: spec.tilt.y },
+      // Spectacle ST rule:
+      // 1) back surface is fixed at vertex distance(position.z)
+      // 2) back-front gap is optimized (thickness=0 => auto)
+      thickness: 0,
+      s: this.toFiniteNumber(spec?.s),
+      c: this.toFiniteNumber(spec?.c),
+      ax: this.toFiniteNumber(spec?.ax),
+      n_before: FRAUNHOFER_REFRACTIVE_INDICES.air,
+      n: FRAUNHOFER_REFRACTIVE_INDICES.crown_glass,
+      n_after: FRAUNHOFER_REFRACTIVE_INDICES.air,
+    }));
     this.light_source = light_source.type === "radial"
       ? new RadialLightSource(light_source as RadialLightSourceProps)
       : light_source.type === "grid_rg"
         ? new GridRGLightSource(light_source as GridRGLightSourceProps)
         : new GridLightSource(light_source as GridLightSourceProps);
+    this.refreshSortedSurfaces();
   }
 
   /**
@@ -404,12 +421,10 @@ export class SCAXEngineCore {
    * 광원에서 시작한 광선을 표면 순서대로 굴절시켜 최종 광선 집합을 반환합니다.
    */
   public rayTracing(): Ray[] {
-    const lensSurfaces = [...this.lens].sort((a, b) => this.surfaceOrderZ(a) - this.surfaceOrderZ(b));
-    const eyeSurfaces = [...this.surfaces].sort((a, b) => this.surfaceOrderZ(a) - this.surfaceOrderZ(b));
-    eyeSurfaces.forEach((surface) => {
-      const maybeImageSurface = surface as unknown as { clearHitPoints?: () => void };
-      if (typeof maybeImageSurface.clearHitPoints === "function") maybeImageSurface.clearHitPoints();
-    });
+    const lensSurfaces = this.sortedLensSurfaces;
+    const eyeSurfaces = this.sortedEyeSurfaces;
+    lensSurfaces.forEach((surface) => surface.clearTraceHistory());
+    eyeSurfaces.forEach((surface) => surface.clearTraceHistory());
     const emittedSourceRays = this.light_source.emitRays().map((ray) => this.applyLightSourceTransformToRay(ray));
     const sourceRays = this.hasPupilStop
       ? emittedSourceRays
@@ -484,13 +499,6 @@ export class SCAXEngineCore {
   }
 
   /**
-   * 기존 API 호환용 별칭입니다.
-   */
-  public affine2d(pairs: AffinePair[]) {
-    return this.estimateAffineDistortion(pairs);
-  }
-
-  /**
    * 현재 eye+lens 설정 기준 affine 왜곡 결과를 반환합니다.
    * traced ray/affine 결과는 기존 계산값을 우선 재사용합니다.
    */
@@ -530,15 +538,6 @@ export class SCAXEngineCore {
   private surfaceOrderZ(surface: Surface) {
     const z = Number(this.readSurfacePosition(surface)?.z);
     return Number.isFinite(z) ? z : 0;
-  }
-
-  private readSurfaceName(surface: Surface) {
-    return (surface as unknown as { name?: string }).name;
-  }
-
-  private readSurfaceType(surface: Surface) {
-    const value = (surface as unknown as { type?: string }).type;
-    return typeof value === "string" && value.length ? value : "unknown";
   }
 
   private readSurfacePosition(surface: Surface) {
@@ -629,23 +628,33 @@ export class SCAXEngineCore {
 
   private normalizeEyeTilt(value: EyeConfig["tilt"]) {
     return {
-      x: Number(value?.x ?? 0),
-      y: Number(value?.y ?? 0),
+      x: this.toFiniteNumber(value?.x),
+      y: this.toFiniteNumber(value?.y),
     };
   }
 
   private normalizeLightSourcePose(value: LightSourceConfig) {
     return {
       position: {
-        x: Number(value?.position?.x ?? 0),
-        y: Number(value?.position?.y ?? 0),
-        z: Number(value?.position?.z ?? 0),
+        x: this.toFiniteNumber(value?.position?.x),
+        y: this.toFiniteNumber(value?.position?.y),
+        z: this.toFiniteNumber(value?.position?.z),
       },
       tilt: {
-        x: Number(value?.tilt?.x ?? 0),
-        y: Number(value?.tilt?.y ?? 0),
+        x: this.toFiniteNumber(value?.tilt?.x),
+        y: this.toFiniteNumber(value?.tilt?.y),
       },
     };
+  }
+
+  private toFiniteNumber(value: unknown, fallback = 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  private refreshSortedSurfaces() {
+    this.sortedLensSurfaces = [...this.lens].sort((a, b) => this.surfaceOrderZ(a) - this.surfaceOrderZ(b));
+    this.sortedEyeSurfaces = [...this.surfaces].sort((a, b) => this.surfaceOrderZ(a) - this.surfaceOrderZ(b));
   }
 
   private prismVectorFromBase(prismDiopter: number, baseAngleDeg: number) {
@@ -845,33 +854,25 @@ export default class SCAXEngine {
     this.core = new SCAXEngineCore(props);
   }
 
-  // Test/debug bridge for legacy direct field mutation patterns.
+  // Test/debug bridge for legacy direct field access patterns.
   public get lens() {
     return (this.core as unknown as { lens: Surface[] }).lens;
-  }
-
-  public set lens(value: Surface[]) {
-    (this.core as unknown as { lens: Surface[] }).lens = value;
   }
 
   public get light_source() {
     return (this.core as unknown as { light_source: LightSource }).light_source;
   }
 
-  public set light_source(value: LightSource) {
-    (this.core as unknown as { light_source: LightSource }).light_source = value;
-  }
-
   public get surfaces() {
     return (this.core as unknown as { surfaces: Surface[] }).surfaces;
   }
 
-  public set surfaces(value: Surface[]) {
-    (this.core as unknown as { surfaces: Surface[] }).surfaces = value;
-  }
-
   public update(props: SCAXEngineProps = {}) {
     this.core.update(props);
+  }
+
+  public dispose() {
+    this.core.dispose();
   }
 
   public simulate(): SimulateResult {
@@ -892,10 +893,6 @@ export default class SCAXEngine {
 
   public estimateAffineDistortion(pairs: AffinePair[]) {
     return this.core.estimateAffineDistortion(pairs);
-  }
-
-  public affine2d(pairs: AffinePair[]) {
-    return this.core.affine2d(pairs);
   }
 
   public getAffineAnalysis(): AffineAnalysisResult {

@@ -314,5 +314,41 @@ describe("SCAXEngine", () => {
       expect(Number.isFinite(dLine?.approx_center?.y)).toBe(true);
       expect(Number.isFinite(dLine?.approx_center?.z)).toBe(true);
     });
+
+    it("NaN 입력이 포함되어도 회전/시뮬레이션 결과가 유한값으로 유지된다", () => {
+      const simulator = new SCAXEngine({
+        eye: { s: 0, c: 0, ax: 0, p: 0, p_ax: 0, tilt: { x: Number.NaN, y: Number.NaN } },
+        light_source: {
+          type: "grid",
+          width: 8,
+          height: 8,
+          division: 4,
+          z: -20,
+          vergence: 0,
+          position: { x: Number.NaN, y: Number.NaN, z: Number.NaN },
+          tilt: { x: Number.NaN, y: Number.NaN },
+        },
+      });
+      const rotation = simulator.getEyeRotation();
+      const result = simulator.simulate();
+      expect(Number.isFinite(rotation.x_deg)).toBe(true);
+      expect(Number.isFinite(rotation.y_deg)).toBe(true);
+      expect(Number.isFinite(rotation.magnitude_deg)).toBe(true);
+      expect(Array.isArray(result.traced_rays)).toBe(true);
+    });
+
+    it("dispose 이후 update로 재초기화하면 다시 시뮬레이션 가능하다", () => {
+      const simulator = new SCAXEngine({
+        light_source: { type: "grid", width: 8, height: 8, division: 4, z: -10, vergence: 0 },
+      });
+      simulator.simulate();
+      simulator.dispose();
+      simulator.update({
+        eye: { s: -1, c: -0.5, ax: 90 },
+        light_source: { type: "grid", width: 8, height: 8, division: 4, z: -10, vergence: 0 },
+      });
+      const result = simulator.simulate();
+      expect(result.traced_rays.length).toBeGreaterThan(0);
+    });
   });
 });

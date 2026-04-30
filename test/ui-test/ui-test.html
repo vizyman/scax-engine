@@ -390,21 +390,6 @@
         window.history.replaceState(null, "", nextUrl);
       }
       let refreshTimer = null;
-      /** 정시 시뮬 아핀 계수: 최초 성공 시 1회만 저장. 렌즈/눈 도수 변경 후에도 갱신하지 않음 */
-      let frozenOrthoAffineResult = null;
-
-      function snapshotAffineCoefficients(ar) {
-        if (!ar) return null;
-        const a = Number(ar.a);
-        const b = Number(ar.b);
-        const c = Number(ar.c);
-        const d = Number(ar.d);
-        const e = Number(ar.e);
-        const f = Number(ar.f);
-        if (![a, b, c, d, e, f].every(Number.isFinite)) return null;
-        return { a, b, c, d, e, f, count: Number(ar.count) || 0 };
-      }
-
       function requestSimulationRefresh() {
         syncUrlWithState();
         if (refreshTimer !== null) window.clearTimeout(refreshTimer);
@@ -1060,30 +1045,18 @@
         canvasCtx.globalAlpha = 1;
       }
 
-      function drawAffineGrid(canvasCtx, affineResult, affineResultRef, distortionMetrics) {
+      function drawAffinePanel(canvasCtx, panels) {
         const width = canvasCtx.canvas.width;
         const height = canvasCtx.canvas.height;
         canvasCtx.clearRect(0, 0, width, height);
         canvasCtx.fillStyle = "#020617";
         canvasCtx.fillRect(0, 0, width, height);
-
-        if (!affineResult) {
-          canvasCtx.fillStyle = "#94a3b8";
-          canvasCtx.font = "12px Arial";
-          canvasCtx.fillText("Affine unavailable", 12, 24);
-          return;
-        }
         const sourceColor = "#f59e0b";
         const imageColor = "#22d3ee";
-        /** 정시 시뮬 아핀 격자: 시안 실선 위에 분홍 점선 */
-        const imageRefColor = "#f472b6";
-
-        const margin = 18;
-        const plotLeft = margin;
-        const plotTop = 30;
-        const bottomReserve = 38;
-        const plotWidth = width - margin * 2;
-        const plotHeight = height - margin - plotTop - bottomReserve;
+        const margin = 10;
+        const gutter = 10;
+        const panelW = Math.floor((width - margin * 2 - gutter) / 2);
+        const panelH = Math.floor((height - margin * 2 - gutter) / 2);
         const gridExtent = 6;
         const gridStep = gridExtent / 3;
 
@@ -1094,144 +1067,108 @@
           };
         }
 
-        /** 광원 기준 도메인 고정: 항상 ±gridExtent 가 플롯을 가득 채움 */
-        const domain = gridExtent;
-        const scale = Math.min((plotWidth - 2) / (domain * 2), (plotHeight - 2) / (domain * 2));
-        const originX = plotLeft + plotWidth / 2;
-        const originY = plotTop + plotHeight / 2;
+        function drawSinglePanel(panel, index) {
+          const row = Math.floor(index / 2);
+          const col = index % 2;
+          const left = margin + col * (panelW + gutter);
+          const top = margin + row * (panelH + gutter);
+          const domain = gridExtent;
+          const plotTop = top + 20;
+          const plotLeft = left + 6;
+          const plotWidth = panelW - 12;
+          const plotHeight = panelH - 38;
+          const scale = Math.min((plotWidth - 2) / (domain * 2), (plotHeight - 2) / (domain * 2));
+          const originX = plotLeft + plotWidth / 2;
+          const originY = plotTop + plotHeight / 2;
+          function toCanvas(x, y) {
+            return { x: originX + x * scale, y: originY - y * scale };
+          }
 
-        function toCanvas(x, y) {
-          return {
-            x: originX + x * scale,
-            y: originY - y * scale,
-          };
-        }
-
-        canvasCtx.strokeStyle = "#1e293b";
-        canvasCtx.lineWidth = 1;
-        canvasCtx.strokeRect(plotLeft, plotTop, plotWidth, plotHeight);
-        const axisX0 = toCanvas(-domain, 0);
-        const axisX1 = toCanvas(domain, 0);
-        const axisY0 = toCanvas(0, -domain);
-        const axisY1 = toCanvas(0, domain);
-        canvasCtx.beginPath();
-        canvasCtx.moveTo(axisX0.x, axisX0.y);
-        canvasCtx.lineTo(axisX1.x, axisX1.y);
-        canvasCtx.moveTo(axisY0.x, axisY0.y);
-        canvasCtx.lineTo(axisY1.x, axisY1.y);
-        canvasCtx.stroke();
-
-        canvasCtx.strokeStyle = "#334155";
-        canvasCtx.lineWidth = 1;
-        for (let i = -3; i <= 3; i += 1) {
-          const x0 = toCanvas(i * gridStep, -gridExtent);
-          const x1 = toCanvas(i * gridStep, gridExtent);
-          const y0 = toCanvas(-gridExtent, i * gridStep);
-          const y1 = toCanvas(gridExtent, i * gridStep);
-          canvasCtx.beginPath();
-          canvasCtx.moveTo(x0.x, x0.y);
-          canvasCtx.lineTo(x1.x, x1.y);
-          canvasCtx.stroke();
-          canvasCtx.beginPath();
-          canvasCtx.moveTo(y0.x, y0.y);
-          canvasCtx.lineTo(y1.x, y1.y);
-          canvasCtx.stroke();
-        }
-
-        canvasCtx.strokeStyle = sourceColor;
-        canvasCtx.lineWidth = 1.1;
-        for (let i = -3; i <= 3; i += 1) {
-          const x0 = toCanvas(i * gridStep, -gridExtent);
-          const x1 = toCanvas(i * gridStep, gridExtent);
-          const y0 = toCanvas(-gridExtent, i * gridStep);
-          const y1 = toCanvas(gridExtent, i * gridStep);
-          canvasCtx.beginPath();
-          canvasCtx.moveTo(x0.x, x0.y);
-          canvasCtx.lineTo(x1.x, x1.y);
-          canvasCtx.stroke();
-          canvasCtx.beginPath();
-          canvasCtx.moveTo(y0.x, y0.y);
-          canvasCtx.lineTo(y1.x, y1.y);
-          canvasCtx.stroke();
-        }
-
-        canvasCtx.save();
-        canvasCtx.beginPath();
-        canvasCtx.rect(plotLeft, plotTop, plotWidth, plotHeight);
-        canvasCtx.clip();
-
-        drawAffineMappedGrid(
-          canvasCtx,
-          affineResult,
-          toCanvas,
-          affineMap,
-          gridExtent,
-          gridStep,
-          {
-            stroke: imageColor,
-            lineWidth: 1.55,
-            dash: [],
-            alpha: 1,
-          },
-        );
-        if (affineResultRef) {
-          drawAffineMappedGrid(
-            canvasCtx,
-            affineResultRef,
-            toCanvas,
-            affineMap,
-            gridExtent,
-            gridStep,
-            {
-              stroke: imageRefColor,
-              lineWidth: 2.1,
-              dash: [7, 5],
-              alpha: 1,
-            },
-          );
-        }
-        canvasCtx.restore();
-
-        if (!affineResultRef) {
-          canvasCtx.save();
-          canvasCtx.font = "10px Arial";
+          canvasCtx.strokeStyle = "#334155";
+          canvasCtx.lineWidth = 1;
+          canvasCtx.strokeRect(left, top, panelW, panelH);
+          canvasCtx.fillStyle = "#cbd5e1";
+          canvasCtx.font = "11px Arial";
           canvasCtx.textAlign = "left";
-          canvasCtx.fillStyle = "#f87171";
-          canvasCtx.fillText(
-            "정시 참조 아핀 없음 — 광선/쌍 부족 시 참조 격자가 그려지지 않습니다.",
-            plotLeft + 4,
-            plotTop + 14,
-          );
-          canvasCtx.restore();
+          canvasCtx.fillText(String(panel?.title || "panel"), left + 6, top + 14);
+
+          canvasCtx.strokeStyle = "#1e293b";
+          const axisX0 = toCanvas(-domain, 0);
+          const axisX1 = toCanvas(domain, 0);
+          const axisY0 = toCanvas(0, -domain);
+          const axisY1 = toCanvas(0, domain);
+          canvasCtx.beginPath();
+          canvasCtx.moveTo(axisX0.x, axisX0.y);
+          canvasCtx.lineTo(axisX1.x, axisX1.y);
+          canvasCtx.moveTo(axisY0.x, axisY0.y);
+          canvasCtx.lineTo(axisY1.x, axisY1.y);
+          canvasCtx.stroke();
+
+          canvasCtx.strokeStyle = "#334155";
+          for (let i = -3; i <= 3; i += 1) {
+            const x0 = toCanvas(i * gridStep, -gridExtent);
+            const x1 = toCanvas(i * gridStep, gridExtent);
+            const y0 = toCanvas(-gridExtent, i * gridStep);
+            const y1 = toCanvas(gridExtent, i * gridStep);
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(x0.x, x0.y);
+            canvasCtx.lineTo(x1.x, x1.y);
+            canvasCtx.stroke();
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(y0.x, y0.y);
+            canvasCtx.lineTo(y1.x, y1.y);
+            canvasCtx.stroke();
+          }
+
+          canvasCtx.strokeStyle = sourceColor;
+          canvasCtx.lineWidth = 1.1;
+          for (let i = -3; i <= 3; i += 1) {
+            const x0 = toCanvas(i * gridStep, -gridExtent);
+            const x1 = toCanvas(i * gridStep, gridExtent);
+            const y0 = toCanvas(-gridExtent, i * gridStep);
+            const y1 = toCanvas(gridExtent, i * gridStep);
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(x0.x, x0.y);
+            canvasCtx.lineTo(x1.x, x1.y);
+            canvasCtx.stroke();
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(y0.x, y0.y);
+            canvasCtx.lineTo(y1.x, y1.y);
+            canvasCtx.stroke();
+          }
+
+          if (panel?.affine) {
+            canvasCtx.save();
+            canvasCtx.beginPath();
+            canvasCtx.rect(plotLeft, plotTop, plotWidth, plotHeight);
+            canvasCtx.clip();
+            drawAffineMappedGrid(
+              canvasCtx,
+              panel.affine,
+              toCanvas,
+              affineMap,
+              gridExtent,
+              gridStep,
+              { stroke: imageColor, lineWidth: 1.4, dash: [], alpha: 1 },
+            );
+            canvasCtx.restore();
+          } else if (!panel?.showSourceOnly) {
+            canvasCtx.fillStyle = "#f87171";
+            canvasCtx.font = "10px Arial";
+            canvasCtx.fillText("affine unavailable", left + 8, panelH + top - 8);
+          }
+
+          canvasCtx.fillStyle = "#94a3b8";
+          canvasCtx.font = "10px Arial";
+          if (panel?.showSourceOnly) {
+            canvasCtx.fillText("광원 기준 격자", left + 8, panelH + top - 8);
+          } else {
+            const pairCount = Number(panel?.affine?.count);
+            canvasCtx.fillText("pairs: " + (Number.isFinite(pairCount) ? pairCount : 0), left + 8, panelH + top - 8);
+          }
         }
 
-        drawAffineDistortionHint(
-          canvasCtx,
-          plotLeft,
-          plotTop + plotHeight + 6,
-          distortionMetrics || computeAffineDistortionMetrics(affineResult, affineResultRef),
-        );
-
-        canvasCtx.font = "10px Arial";
-        canvasCtx.textAlign = "left";
-        canvasCtx.fillStyle = sourceColor;
-        canvasCtx.fillRect(plotLeft, 6, 10, 10);
-        canvasCtx.fillStyle = "#cbd5e1";
-        canvasCtx.fillText("광원(고정)", plotLeft + 14, 14);
-        canvasCtx.strokeStyle = imageRefColor;
-        canvasCtx.lineWidth = 2;
-        canvasCtx.setLineDash([5, 4]);
-        canvasCtx.beginPath();
-        canvasCtx.moveTo(plotLeft + 86, 11);
-        canvasCtx.lineTo(plotLeft + 104, 11);
-        canvasCtx.stroke();
-        canvasCtx.setLineDash([]);
-        canvasCtx.fillStyle = "#cbd5e1";
-        canvasCtx.fillText("정시(초기고정)", plotLeft + 106, 14);
-        canvasCtx.fillStyle = imageColor;
-        canvasCtx.fillRect(plotLeft + 200, 6, 10, 10);
-        canvasCtx.fillStyle = "#cbd5e1";
-        canvasCtx.fillText("현재 상", plotLeft + 214, 14);
+        (Array.isArray(panels) ? panels : []).slice(0, 4).forEach(drawSinglePanel);
       }
 
 
@@ -1349,6 +1286,14 @@
 
       function runSimulationAndRender() {
         clearSimulationObjects();
+        const zeroLensState = Object.assign({}, uiState, {
+          spectacleEnabled: false,
+          crossCylinderEnabled: false,
+          spectacleP: 0,
+          spectaclePAx: 0,
+        });
+        const orthoRefState = buildOrthophoricReferenceState(zeroLensState);
+        const eyePrismState = Object.assign({}, zeroLensState);
         const lensConfigs = buildLensConfigs(uiState);
         const hasLens = Array.isArray(lensConfigs) && lensConfigs.length > 0;
         const engine = new ScaxEngine.SCAXEngine({
@@ -1439,30 +1384,39 @@
           .filter(Boolean)
           .length;
         const affineResult = engine.getAffineAnalysis();
-        if (!frozenOrthoAffineResult) {
-          const orthoRefState = buildOrthophoricReferenceState(uiState);
-          const refEngineOnce = new ScaxEngine.SCAXEngine({
-            eyeModel: orthoRefState.eyeModel,
-            pupil_type: orthoRefState.pupilType,
-            eye: {
-              s: orthoRefState.eyeS,
-              c: orthoRefState.eyeC,
-              ax: orthoRefState.eyeAx,
-              p: orthoRefState.eyeP,
-              p_ax: orthoRefState.eyePAx,
-              tilt: {
-                x: orthoRefState.eyeTiltX,
-                y: orthoRefState.eyeTiltY,
-              },
-            },
-            lens: buildLensConfigs(orthoRefState),
-            light_source: buildLightSourceConfig(orthoRefState),
-          });
-          refEngineOnce.simulate();
-          frozenOrthoAffineResult = snapshotAffineCoefficients(refEngineOnce.getAffineAnalysis());
-        }
-        const affineResultRef = frozenOrthoAffineResult;
-        const affineDistortionMetrics = computeAffineDistortionMetrics(affineResult, affineResultRef);
+        const orthoRefEngine = new ScaxEngine.SCAXEngine({
+          eyeModel: orthoRefState.eyeModel,
+          pupil_type: orthoRefState.pupilType,
+          eye: {
+            s: orthoRefState.eyeS,
+            c: orthoRefState.eyeC,
+            ax: orthoRefState.eyeAx,
+            p: orthoRefState.eyeP,
+            p_ax: orthoRefState.eyePAx,
+            tilt: { x: orthoRefState.eyeTiltX, y: orthoRefState.eyeTiltY },
+          },
+          lens: buildLensConfigs(orthoRefState),
+          light_source: buildLightSourceConfig(orthoRefState),
+        });
+        orthoRefEngine.simulate();
+        const affineResultOrtho = orthoRefEngine.getAffineAnalysis();
+        const eyePrismEngine = new ScaxEngine.SCAXEngine({
+          eyeModel: eyePrismState.eyeModel,
+          pupil_type: eyePrismState.pupilType,
+          eye: {
+            s: eyePrismState.eyeS,
+            c: eyePrismState.eyeC,
+            ax: eyePrismState.eyeAx,
+            p: eyePrismState.eyeP,
+            p_ax: eyePrismState.eyePAx,
+            tilt: { x: eyePrismState.eyeTiltX, y: eyePrismState.eyeTiltY },
+          },
+          lens: buildLensConfigs(eyePrismState),
+          light_source: buildLightSourceConfig(eyePrismState),
+        });
+        eyePrismEngine.simulate();
+        const affineResultEyeOnly = eyePrismEngine.getAffineAnalysis();
+        const affineDistortionMetrics = computeAffineDistortionMetrics(affineResult, affineResultOrtho);
         const sturmResult = engine.sturmCalculation(tracedRays);
         const sturmInfo = Array.isArray(sturmResult?.sturm_info) ? sturmResult.sturm_info : [];
         const sourceRays = engine?.light_source?.emitRays ? engine.light_source.emitRays() : [];
@@ -1915,7 +1869,15 @@
               3,
             );
         }
-        drawAffineGrid(affineCtx, affineResult, affineResultRef, affineDistortionMetrics);
+        drawAffinePanel(affineCtx, [
+          { title: "1) 광원", showSourceOnly: true },
+          { title: "2) 정시(eye only)", affine: affineResultOrtho },
+          { title: "3) 눈 굴절(프리즘 반영)", affine: affineResultEyeOnly },
+          { title: "4) 안경 + 눈", affine: affineResult },
+        ]);
+        if (typeof eyePrismEngine?.dispose === "function") eyePrismEngine.dispose();
+        if (typeof orthoRefEngine?.dispose === "function") orthoRefEngine.dispose();
+        if (typeof engine?.dispose === "function") engine.dispose();
       }
       runSimulationAndRender();
 
