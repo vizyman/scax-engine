@@ -44,8 +44,8 @@ const engine = new SCAXEngine({
 
 const result = engine.simulate();
 console.log(result.traced_rays.length);
-console.log(result.induced_astigmatism);
-console.log(result.light_deviation);
+console.log(result.info.astigmatism.combined);
+console.log(result.info.prism.combined);
 ```
 
 To reuse one engine instance in UI flows (sliders, animation), call `update` with a **full** `props` object, then `simulate` again instead of `new SCAXEngine` on every change. Omitted top-level keys are **not** deep-merged with the previous run; they fall back to constructor defaults.
@@ -94,7 +94,7 @@ The same `props` rules apply to `update()`. If you pass a partial object, omitte
 - `eye.p` / `eye.p_ax` are **prescription (correction) amounts**.
 - `lens.p` / `lens.p_ax` are **prescription (correction) amounts**.
 - `p_ax` is the clinical **base** direction, in the **lens-facing-the-cornea** frame.
-- For `light_deviation`, the eye prism contribution uses the opposite vector to represent actual ocular deviation.
+- In `simulate().info.prism.eye`, the eye prism contribution uses the opposite vector to represent actual ocular deviation.
 - The lens is a physical refracting element, so ray tracing uses the prescribed deviation direction as given.
 - When correction matches, lens and eye prism agree in magnitude and axis and `net_prism` is near zero.
 
@@ -112,36 +112,34 @@ Re-runs the same configuration path as the constructor: rebuilds eye, lens, surf
   ```ts
   (): {
     traced_rays: Ray[];
-    induced_astigmatism: {
-      induced: { d: number; tabo_deg: number } | null;
-      eye: { d: number; tabo_deg: number } | null;
-      lens: { d: number; tabo_deg: number } | null;
-    };
-    light_deviation: {
-      eye_prism_effect: PrismVector;
-      lens_prism_total: PrismVector;
-      net_prism: PrismVector;
-      x_angle_deg: number;
-      y_angle_deg: number;
-      net_angle_deg: number;
+    info: {
+      astigmatism: {
+        eye: { tabo_deg: number; d: number | null };
+        lens: Array<{ name: string; type: string; tabo_deg: number; d: number | null }>;
+        combined: { tabo_deg: number; d: number | null };
+      };
+      prism: {
+        eye: { p_x: number; p_y: number; prism_angle: number; magnitude: number | null };
+        lens: { p_x: number; p_y: number; prism_angle: number; magnitude: number | null };
+        combined: { p_x: number; p_y: number; prism_angle: number; magnitude: number | null };
+      };
     };
   }
   ```
-  - Ray tracing, induced astigmatism summary, and prism / angle deviation.
+  - Returns ray tracing output plus astigmatism/prism summaries.
+  - `d` and `magnitude` are returned as `null` when they are effectively zero.
 
-- `getEyeRotationForRender()`
+- `getEyeRotation()`
   ```ts
   (): {
     x_deg: number;
     y_deg: number;
     magnitude_deg: number;
-    source_prism: { p: number; p_ax: number };
-    source_tilt: { x: number; y: number };
   }
   ```
   - Eye rotation for rendering from prescribed prism plus `eye.tilt`.
 
-- `rayTracing()` — runs ray tracing only and returns traced `Ray[]`. `simulate()` runs tracing plus Sturm, induced astigmatism, and deviation.
+- `rayTracing()` — runs ray tracing only and returns traced `Ray[]`. `simulate()` runs tracing plus Sturm and astigmatism/prism summaries.
 
 - `sturmCalculation(rays?)` — computes Sturm slices and per–Fraunhofer-line summaries for the given rays (defaults to the last `rayTracing` / `simulate` output). `simulate()` already refreshes Sturm internally.
 

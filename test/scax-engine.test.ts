@@ -59,14 +59,15 @@ describe("SCAXEngine", () => {
   });
 
   describe("simulate 및 rayTracing", () => {
-    it("추적된 광선 배열과 유발 난시/빛 편위 필드를 반환한다", () => {
+    it("추적된 광선 배열과 info(난시/프리즘) 필드를 반환한다", () => {
       const simulator = new SCAXEngine({
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
       const result = simulator.simulate();
       expect(Array.isArray(result.traced_rays)).toBe(true);
-      expect(result).toHaveProperty("induced_astigmatism");
-      expect(result).toHaveProperty("light_deviation");
+      expect(result).toHaveProperty("info");
+      expect(result.info).toHaveProperty("astigmatism");
+      expect(result.info).toHaveProperty("prism");
     });
 
     it("동공이 축동되면 추적 광선 수가 증가하지 않는다", () => {
@@ -100,9 +101,9 @@ describe("SCAXEngine", () => {
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
       const result = simulator.simulate();
-      expect(Math.abs(result.light_deviation.net_prism.x)).toBeLessThan(1e-9);
-      expect(Math.abs(result.light_deviation.net_prism.y)).toBeLessThan(1e-9);
-      expect(result.light_deviation.net_prism.magnitude).toBeLessThan(1e-9);
+      expect(Math.abs(result.info.prism.combined.p_x)).toBeLessThan(1e-9);
+      expect(Math.abs(result.info.prism.combined.p_y)).toBeLessThan(1e-9);
+      expect(result.info.prism.combined.magnitude).toBeNull();
     });
 
     it("eye/lens 모두 교정도수 입력일 때 0도 동일값이면 net 편위가 0에 가깝다", () => {
@@ -120,10 +121,10 @@ describe("SCAXEngine", () => {
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
       const result = simulator.simulate();
-      expect(Math.abs(result.light_deviation.net_prism.x)).toBeLessThan(1e-9);
-      expect(Math.abs(result.light_deviation.net_prism.y)).toBeLessThan(1e-9);
-      expect(result.light_deviation.net_prism.magnitude).toBeLessThan(1e-9);
-      expect(Math.abs(result.light_deviation.lens_prism_total.y)).toBeLessThan(1e-9);
+      expect(Math.abs(result.info.prism.combined.p_x)).toBeLessThan(1e-9);
+      expect(Math.abs(result.info.prism.combined.p_y)).toBeLessThan(1e-9);
+      expect(result.info.prism.combined.magnitude).toBeNull();
+      expect(Math.abs(result.info.prism.lens.p_y)).toBeLessThan(1e-9);
     });
 
     it("렌더용 눈 회전량은 eye 프리즘 벡터 방향으로 계산된다", () => {
@@ -131,9 +132,7 @@ describe("SCAXEngine", () => {
         eye: { s: 0, c: 0, ax: 0, p: 1, p_ax: 0 },
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
-      const rotation = simulator.getEyeRotationForRender();
-      expect(rotation.source_prism.p).toBe(1);
-      expect(rotation.source_prism.p_ax).toBe(0);
+      const rotation = simulator.getEyeRotation();
       // p=1Δ, base 0° 입력이면 렌더 회전 x는 음수 방향으로 계산된다.
       expect(rotation.x_deg).toBeLessThan(0);
       expect(Math.abs(rotation.magnitude_deg)).toBeCloseTo(0.57, 1);
@@ -144,9 +143,7 @@ describe("SCAXEngine", () => {
         eye: { s: 0, c: 0, ax: 0, p: 0, p_ax: 0, tilt: { x: 3, y: -2 } },
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
-      const rotation = simulator.getEyeRotationForRender();
-      expect(rotation.source_tilt.x).toBe(3);
-      expect(rotation.source_tilt.y).toBe(-2);
+      const rotation = simulator.getEyeRotation();
       expect(rotation.x_deg).toBeCloseTo(-2, 8);
       expect(rotation.y_deg).toBeCloseTo(3, 8);
     });
@@ -207,8 +204,8 @@ describe("SCAXEngine", () => {
       expect(Math.abs(prismDir!.x)).toBeGreaterThan(Math.abs(baseDir!.x) + 1e-6);
       expect(prismDir!.x).toBeLessThan(0);
       const withEyePrismSim = withEyePrism.simulate();
-      expect(withEyePrismSim.light_deviation.eye_prism_effect.magnitude).toBeCloseTo(2, 8);
-      expect(withEyePrism.getEyeRotationForRender().magnitude_deg).toBeGreaterThan(0);
+      expect(withEyePrismSim.info.prism.eye.magnitude).toBeCloseTo(2, 8);
+      expect(withEyePrism.getEyeRotation().magnitude_deg).toBeGreaterThan(0);
     });
 
     it("light_source의 position/tilt가 광로와 진행 방향에 반영된다", () => {

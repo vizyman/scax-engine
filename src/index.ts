@@ -13,6 +13,10 @@ export type {
   SCAxPower,
   InducedAstigmatism,
   InducedAstigmatismSummary,
+  AstigmatismSummaryItem,
+  LensAstigmatismSummaryItem,
+  PrismSummaryItem,
+  SimulationResultInfo,
   SimulateResult,
   AffineAnalysisResult,
 } from "./scax-engine";

@@ -9,7 +9,7 @@ function expectedRadiusMm(powerD: number, nBefore: number, nAfter: number) {
 }
 
 describe("STSurface regressions", () => {
-  it("cylinder가 있을 때 front/back 반경이 실제 굴절 인터페이스 기준으로 계산된다", () => {
+  it("cylinder가 있을 때 구면/토릭 반경이 실제 굴절 인터페이스 기준으로 계산된다", () => {
     const st = new STSurface({
       type: "compound",
       name: "regression_st",
@@ -24,20 +24,20 @@ describe("STSurface regressions", () => {
     });
 
     const stAny = st as unknown as {
-      front?: { r?: number };
-      back?: { r_perp?: number };
+      sphericalSurface?: { r?: number };
+      toricSurface?: { r_perp?: number };
     };
-    const frontR = Number(stAny.front?.r);
-    const backRPerp = Number(stAny.back?.r_perp);
+    const sphericalR = Number(stAny.sphericalSurface?.r);
+    const toricRPerp = Number(stAny.toricSurface?.r_perp);
 
     const nAir = FRAUNHOFER_REFRACTIVE_INDICES.air.d;
     const nGlass = FRAUNHOFER_REFRACTIVE_INDICES.crown_glass.d;
 
-    const expectedBack = expectedRadiusMm(-2, nAir, nGlass);
-    const expectedFront = expectedRadiusMm(-2, nGlass, nAir);
+    const expectedToric = expectedRadiusMm(-2, nAir, nGlass);
+    const expectedSpherical = expectedRadiusMm(-2, nGlass, nAir);
 
-    expect(backRPerp).toBeCloseTo(expectedBack, 6);
-    expect(frontR).toBeCloseTo(expectedFront, 6);
+    expect(toricRPerp).toBeCloseTo(expectedToric, 6);
+    expect(sphericalR).toBeCloseTo(expectedSpherical, 6);
   });
 
   it("lens.position.z가 실제 렌즈 ST 표면 위치에 반영된다", () => {

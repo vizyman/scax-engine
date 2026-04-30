@@ -44,8 +44,8 @@ const engine = new SCAXEngine({
 
 const result = engine.simulate();
 console.log(result.traced_rays.length);
-console.log(result.induced_astigmatism);
-console.log(result.light_deviation);
+console.log(result.info.astigmatism.combined);
+console.log(result.info.prism.combined);
 ```
 
 UI(슬라이더, 애니메이션 등)에서 변경마다 `new SCAXEngine`을 다시 만들지 않고 하나의 엔진 인스턴스를 재사용하려면, 전체 `props` 객체로 `update`를 호출한 뒤 `simulate`를 다시 실행하세요. `update`에서 생략된 최상위 필드는 이전 상태와 병합되지 않으며 생성자 기본값으로 채워집니다.
@@ -94,7 +94,7 @@ const next = engine.simulate();
 - `eye.p` / `eye.p_ax`는 **교정량(처방값)** 입니다.
 - `lens.p` / `lens.p_ax`도 **교정량(처방값)** 입니다.
 - `p_ax`는 **임상 Base 방향**, **렌즈 쪽에서 각막을 바라보는 시점** 기준입니다.
-- `light_deviation` 계산에서 눈 프리즘 효과는 실제 안구 편위를 표현하기 위해 내부에서 역방향으로 변환됩니다.
+- `simulate().info.prism.eye` 계산에서 눈 프리즘 효과는 실제 안구 편위를 표현하기 위해 내부에서 역방향으로 변환됩니다.
 - 렌즈는 광선을 굴절시키는 물리 요소이므로, 광선 추적에는 입력 방향이 그대로 적용됩니다.
 - 교정이 맞으면 `lens prism`과 `eye prism`이 크기·축에서 대응하고, 이때 `net_prism`은 0에 가깝습니다.
 
@@ -112,36 +112,34 @@ const next = engine.simulate();
   ```ts
   (): {
     traced_rays: Ray[];
-    induced_astigmatism: {
-      induced: { d: number; tabo_deg: number } | null;
-      eye: { d: number; tabo_deg: number } | null;
-      lens: { d: number; tabo_deg: number } | null;
-    };
-    light_deviation: {
-      eye_prism_effect: PrismVector;
-      lens_prism_total: PrismVector;
-      net_prism: PrismVector;
-      x_angle_deg: number;
-      y_angle_deg: number;
-      net_angle_deg: number;
+    info: {
+      astigmatism: {
+        eye: { tabo_deg: number; d: number | null };
+        lens: Array<{ name: string; type: string; tabo_deg: number; d: number | null }>;
+        combined: { tabo_deg: number; d: number | null };
+      };
+      prism: {
+        eye: { p_x: number; p_y: number; prism_angle: number; magnitude: number | null };
+        lens: { p_x: number; p_y: number; prism_angle: number; magnitude: number | null };
+        combined: { p_x: number; p_y: number; prism_angle: number; magnitude: number | null };
+      };
     };
   }
   ```
-  - 광선 추적, 유발 난시 요약, 빛(프리즘) 편위량을 계산합니다.
+  - 광선 추적과 함께 난시/프리즘 요약 정보를 반환합니다.
+  - `d`, `magnitude`는 0에 가까우면 `null`로 반환됩니다.
 
-- `getEyeRotationForRender()`
+- `getEyeRotation()`
   ```ts
   (): {
     x_deg: number;
     y_deg: number;
     magnitude_deg: number;
-    source_prism: { p: number; p_ax: number };
-    source_tilt: { x: number; y: number };
   }
   ```
   - 처방 프리즘·`eye.tilt`를 반영한 렌더용 눈 회전량을 반환합니다.
 
-- `rayTracing()` — 광선 추적만 수행해 추적된 `Ray[]`를 반환합니다. `simulate()`는 이를 포함해 Sturm·유발 난시·편위까지 한 번에 계산합니다.
+- `rayTracing()` — 광선 추적만 수행해 추적된 `Ray[]`를 반환합니다. `simulate()`는 이를 포함해 Sturm·난시/프리즘 요약까지 한 번에 계산합니다.
 
 - `sturmCalculation(rays?)` — 추적 광선(인자 생략 시 마지막 `rayTracing`/`simulate` 결과)으로 Sturm 슬라이스·스펙트럼선별 분석 객체를 계산해 반환합니다. `simulate()` 호출 시 내부에서 Sturm도 갱신됩니다.
 

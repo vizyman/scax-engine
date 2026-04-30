@@ -663,8 +663,8 @@
 
         if (type === "compound") {
           const parts = [];
-          if (surface.front) parts.push(surface.front);
-          if (surface.back) parts.push(surface.back);
+          if (surface.sphericalSurface) parts.push(surface.sphericalSurface);
+          if (surface.toricSurface) parts.push(surface.toricSurface);
           return parts.map(function (part) {
             return buildGeometryForSurface(part, estimateSurfaceRadius(part));
           }).filter(Boolean);
@@ -1221,8 +1221,8 @@
           if (!surface) return;
           const name = String(surface?.name || ("surface_" + index));
           if (String(surface?.type || "").toLowerCase() === "compound") {
-            if (surface.back) list.push({ surface: surface.back, name: name + "_back" });
-            if (surface.front) list.push({ surface: surface.front, name: name + "_front" });
+            if (surface.toricSurface) list.push({ surface: surface.toricSurface, name: name + "_toric" });
+            if (surface.sphericalSurface) list.push({ surface: surface.sphericalSurface, name: name + "_spherical" });
           } else {
             list.push({ surface, name });
           }
@@ -1348,7 +1348,7 @@
           lens: lensConfigs,
           light_source: buildLightSourceConfig(uiState),
         });
-        const eyeRotationForRender = engine.getEyeRotationForRender();
+        const eyeRotationForRender = engine.getEyeRotation();
 
         const surfaces = []
           .concat(engine.lens || [])
@@ -1364,7 +1364,40 @@
         eyeRenderGroup.add(eyeGeometryGroup);
         addSimulationObject(eyeRenderGroup);
         const simulationResult = engine.simulate();
-        const lightDeviation = simulationResult?.light_deviation || null;
+        const prismInfo = simulationResult?.info?.prism
+          ? {
+              eye: simulationResult.info.prism.eye
+                ? {
+                    x: simulationResult.info.prism.eye.p_x,
+                    y: simulationResult.info.prism.eye.p_y,
+                    magnitude: simulationResult.info.prism.eye.magnitude,
+                    angle_deg: simulationResult.info.prism.eye.prism_angle,
+                  }
+                : null,
+              lens: simulationResult.info.prism.lens
+                ? {
+                    x: simulationResult.info.prism.lens.p_x,
+                    y: simulationResult.info.prism.lens.p_y,
+                    magnitude: simulationResult.info.prism.lens.magnitude,
+                    angle_deg: simulationResult.info.prism.lens.prism_angle,
+                  }
+                : null,
+              combined: simulationResult.info.prism.combined
+                ? {
+                    x: simulationResult.info.prism.combined.p_x,
+                    y: simulationResult.info.prism.combined.p_y,
+                    magnitude: simulationResult.info.prism.combined.magnitude,
+                    angle_deg: simulationResult.info.prism.combined.prism_angle,
+                  }
+                : null,
+            }
+          : (simulationResult?.light_deviation
+            ? {
+                eye: simulationResult.light_deviation.eye_prism_effect || null,
+                lens: simulationResult.light_deviation.lens_prism_total || null,
+                combined: simulationResult.light_deviation.net_prism || null,
+              }
+            : null);
         const tracedRays = Array.isArray(simulationResult?.traced_rays)
           ? simulationResult.traced_rays
           : [];
@@ -1422,17 +1455,17 @@
         surfaces.forEach(function (surface, index) {
           if (!surface) return;
           if (String(surface.type || "").toLowerCase() === "compound") {
-            const back = surface.back || null;
-            const front = surface.front || null;
-            const backZ = Number(back?.position?.z);
-            const frontZ = Number(front?.position?.z);
-            const thicknessMm = Number.isFinite(backZ) && Number.isFinite(frontZ)
-              ? (frontZ - backZ)
+            const toric = surface.toricSurface || null;
+            const spherical = surface.sphericalSurface || null;
+            const toricZ = Number(toric?.position?.z);
+            const sphericalZ = Number(spherical?.position?.z);
+            const thicknessMm = Number.isFinite(toricZ) && Number.isFinite(sphericalZ)
+              ? (sphericalZ - toricZ)
               : Number.NaN;
             compoundSummaries.push({
               name: String(surface.name || "compound"),
-              backZ,
-              frontZ,
+              toricZ,
+              sphericalZ,
               thicknessMm,
             });
           }
@@ -1483,7 +1516,7 @@
           if (!surface) return;
           const isEyeSurface = eyeSurfaceSet.has(surface);
           const parts = String(surface.type || "").toLowerCase() === "compound"
-            ? [surface.front].filter(Boolean)
+            ? [surface.sphericalSurface].filter(Boolean)
             : [surface];
           parts.forEach(function (part) {
             const axisDeg = Number(part?.ax ?? surface?.ax ?? 0);
@@ -1643,14 +1676,14 @@
               else if (reason === "tir") failureReasonBySurface[item.name].tir += 1;
               else failureReasonBySurface[item.name].unknown += 1;
 
-              if (item.name === "lens_st_2_front" && reason === "incident") {
+              if (item.name === "lens_st_2_spherical" && reason === "incident") {
                 const origin = activeRay?.endPoint ? activeRay.endPoint() : null;
                 const direction = activeRay?.getDirection ? activeRay.getDirection() : null;
-                const frontZ = Number(item?.surface?.position?.z);
+                const surfaceZ = Number(item?.surface?.position?.z);
                 const originZ = Number(origin?.z);
                 const directionZ = Number(direction?.z);
-                if (Number.isFinite(frontZ) && Number.isFinite(originZ)) {
-                  const dz = originZ - frontZ;
+                if (Number.isFinite(surfaceZ) && Number.isFinite(originZ)) {
+                  const dz = originZ - surfaceZ;
                   lens2FrontIncidentStats.count += 1;
                   lens2FrontIncidentStats.originMinusFrontZMin = Math.min(lens2FrontIncidentStats.originMinusFrontZMin, dz);
                   lens2FrontIncidentStats.originMinusFrontZMax = Math.max(lens2FrontIncidentStats.originMinusFrontZMax, dz);
@@ -1744,23 +1777,23 @@
 
         // Prism visualization arrows near the origin plane for quick visual feedback.
         const prismArrowOrigin = new THREE.Vector3(0, 0, -2.0);
-        if (lightDeviation?.eye_prism_effect) {
-          drawPrismArrow(prismArrowOrigin, lightDeviation.eye_prism_effect, 0x38bdf8, 4.0, 1.2);
+        if (prismInfo?.eye) {
+          drawPrismArrow(prismArrowOrigin, prismInfo.eye, 0x38bdf8, 4.0, 1.2);
         }
-        if (lightDeviation?.lens_prism_total) {
-          drawPrismArrow(prismArrowOrigin.clone().add(new THREE.Vector3(0, 0, -1.2)), lightDeviation.lens_prism_total, 0xf59e0b, 4.0, 1.2);
+        if (prismInfo?.lens) {
+          drawPrismArrow(prismArrowOrigin.clone().add(new THREE.Vector3(0, 0, -1.2)), prismInfo.lens, 0xf59e0b, 4.0, 1.2);
         }
-        if (lightDeviation?.net_prism) {
-          drawPrismArrow(prismArrowOrigin.clone().add(new THREE.Vector3(0, 0, -2.4)), lightDeviation.net_prism, 0xef4444, 4.0, 1.2);
+        if (prismInfo?.combined) {
+          drawPrismArrow(prismArrowOrigin.clone().add(new THREE.Vector3(0, 0, -2.4)), prismInfo.combined, 0xef4444, 4.0, 1.2);
         }
 
         const compoundText = compoundSummaries.length
           ? compoundSummaries
             .map(function (item) {
-              const backZ = Number.isFinite(item.backZ) ? item.backZ.toFixed(4) : "NaN";
-              const frontZ = Number.isFinite(item.frontZ) ? item.frontZ.toFixed(4) : "NaN";
+              const toricZ = Number.isFinite(item.toricZ) ? item.toricZ.toFixed(4) : "NaN";
+              const sphericalZ = Number.isFinite(item.sphericalZ) ? item.sphericalZ.toFixed(4) : "NaN";
               const thicknessMm = Number.isFinite(item.thicknessMm) ? item.thicknessMm.toFixed(4) : "NaN";
-              return item.name + " | backZ=" + backZ + " | frontZ=" + frontZ + " | thickness=" + thicknessMm + "mm";
+              return item.name + " | toricZ=" + toricZ + " | sphericalZ=" + sphericalZ + " | thickness=" + thicknessMm + "mm";
             })
             .join("\n")
           : "none";
@@ -1781,7 +1814,7 @@
         ", x-cyl=" + (uiState.crossCylinderEnabled
           ? "on (+0.25/−0.25 D, ax=" + uiState.crossCylinderAx + "°)"
           : "off") + "\n" +
-        "compound(back->front) check:\n" + compoundText + "\n" +
+        "compound(toricZ->sphericalZ, +z) check:\n" + compoundText + "\n" +
         "rays(simulated/rendered): " + tracedRays.length + " / " + rayCount + "\n" +
         "source points(rendered): " + sourcePointCount + "\n" +
         "source direction arrows: " + sourceDirectionArrowCount + "\n" +
@@ -1795,22 +1828,22 @@
         "trace debug order: " + traceSurfaceOrderText + "\n" +
         "trace debug fail@surface: " + failureText + "\n" +
         "trace debug fail reason: " + failureReasonText + "\n" +
-        "lens_st_2_front z relation: " + lens2FrontZRelationText + "\n" +
+        "lens_st_2_spherical z relation: " + lens2FrontZRelationText + "\n" +
         "eye rotation(for render): x=" + toFixedOrNa(eyeRotationForRender?.x_deg, 3) +
         "°, y=" + toFixedOrNa(eyeRotationForRender?.y_deg, 3) +
         "°, mag=" + toFixedOrNa(eyeRotationForRender?.magnitude_deg, 3) + "°\n" +
-        "eye prism effect: x=" + toFixedOrNa(simulationResult?.light_deviation?.eye_prism_effect?.x, 4) +
-        ", y=" + toFixedOrNa(simulationResult?.light_deviation?.eye_prism_effect?.y, 4) +
-        ", mag=" + toFixedOrNa(simulationResult?.light_deviation?.eye_prism_effect?.magnitude, 4) +
-        ", ang=" + toFixedOrNa(simulationResult?.light_deviation?.eye_prism_effect?.angle_deg, 2) + "°\n" +
-        "lens prism total: x=" + toFixedOrNa(simulationResult?.light_deviation?.lens_prism_total?.x, 4) +
-        ", y=" + toFixedOrNa(simulationResult?.light_deviation?.lens_prism_total?.y, 4) +
-        ", mag=" + toFixedOrNa(simulationResult?.light_deviation?.lens_prism_total?.magnitude, 4) +
-        ", ang=" + toFixedOrNa(simulationResult?.light_deviation?.lens_prism_total?.angle_deg, 2) + "°\n" +
-        "light deviation net prism: x=" + toFixedOrNa(simulationResult?.light_deviation?.net_prism?.x, 4) +
-        ", y=" + toFixedOrNa(simulationResult?.light_deviation?.net_prism?.y, 4) +
-        ", mag=" + toFixedOrNa(simulationResult?.light_deviation?.net_prism?.magnitude, 4) +
-        ", ang=" + toFixedOrNa(simulationResult?.light_deviation?.net_prism?.angle_deg, 2) + "°\n" +
+        "eye prism effect: x=" + toFixedOrNa(prismInfo?.eye?.x, 4) +
+        ", y=" + toFixedOrNa(prismInfo?.eye?.y, 4) +
+        ", mag=" + toFixedOrNa(prismInfo?.eye?.magnitude, 4) +
+        ", ang=" + toFixedOrNa(prismInfo?.eye?.angle_deg, 2) + "°\n" +
+        "lens prism total: x=" + toFixedOrNa(prismInfo?.lens?.x, 4) +
+        ", y=" + toFixedOrNa(prismInfo?.lens?.y, 4) +
+        ", mag=" + toFixedOrNa(prismInfo?.lens?.magnitude, 4) +
+        ", ang=" + toFixedOrNa(prismInfo?.lens?.angle_deg, 2) + "°\n" +
+        "combined prism: x=" + toFixedOrNa(prismInfo?.combined?.x, 4) +
+        ", y=" + toFixedOrNa(prismInfo?.combined?.y, 4) +
+        ", mag=" + toFixedOrNa(prismInfo?.combined?.magnitude, 4) +
+        ", ang=" + toFixedOrNa(prismInfo?.combined?.angle_deg, 2) + "°\n" +
         "meshes: " + meshCount + "\n" +
         "vertices: " + vertexCount + "\n" +
         "triangles: " + triangleCount + "\n" +

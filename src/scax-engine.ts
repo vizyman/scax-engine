@@ -80,8 +80,7 @@ export type InducedAstigmatismSummary = {
 
 export type SimulateResult = {
   traced_rays: Ray[];
-  induced_astigmatism: InducedAstigmatismSummary;
-  light_deviation: LightDeviation;
+  info: SimulationResultInfo;
 };
 
 export type PrismVector = { x: number; y: number; magnitude: number; angle_deg: number };
@@ -90,8 +89,6 @@ export type EyeRotationForRender = {
   x_deg: number;
   y_deg: number;
   magnitude_deg: number;
-  source_prism: { p: number; p_ax: number };
-  source_tilt: { x: number; y: number };
 };
 
 export type LightDeviation = {
@@ -101,6 +98,36 @@ export type LightDeviation = {
   x_angle_deg: number;
   y_angle_deg: number;
   net_angle_deg: number;
+};
+
+export type AstigmatismSummaryItem = {
+  tabo_deg: number;
+  d: number | null;
+};
+
+export type LensAstigmatismSummaryItem = AstigmatismSummaryItem & {
+  name: string;
+  type: string;
+};
+
+export type PrismSummaryItem = {
+  p_x: number;
+  p_y: number;
+  prism_angle: number;
+  magnitude: number | null;
+};
+
+export type SimulationResultInfo = {
+  astigmatism: {
+    eye: AstigmatismSummaryItem;
+    lens: LensAstigmatismSummaryItem[];
+    combined: AstigmatismSummaryItem;
+  };
+  prism: {
+    eye: PrismSummaryItem;
+    lens: PrismSummaryItem;
+    combined: PrismSummaryItem;
+  };
 };
 
 export type AffineAnalysisResult = ReturnType<Affine["estimate"]>;
@@ -346,20 +373,34 @@ export default class SCAXEngine {
   public simulate(): SimulateResult {
     const tracedRays = this.rayTracing();
     this.sturmCalculation(tracedRays);
+    const inducedAstigmatism = this.calculateInducedAstigmatism(this.eyePower, this.lensPowers);
+    const lightDeviation = this.calculateLightDeviation();
     return {
       traced_rays: tracedRays,
-      induced_astigmatism: this.calculateInducedAstigmatism(this.eyePower, this.lensPowers),
-      light_deviation: this.calculateLightDeviation(),
+      info: {
+        astigmatism: {
+          eye: this.toAstigmatismSummaryItem(inducedAstigmatism.eye),
+          lens: this.lensPowers.map((power, index) => ({
+            ...this.toAstigmatismSummaryItem(this.calculateInducedAstigmatism({ s: 0, c: 0, ax: 0 }, [power]).lens),
+            name: this.readSurfaceName(this.lens[index]) ?? `lens_${index + 1}`,
+            type: this.readSurfaceType(this.lens[index]),
+          })),
+          combined: this.toAstigmatismSummaryItem(inducedAstigmatism.induced),
+        },
+        prism: {
+          eye: this.toPrismSummaryItem(lightDeviation.eye_prism_effect),
+          lens: this.toPrismSummaryItem(lightDeviation.lens_prism_total),
+          combined: this.toPrismSummaryItem(lightDeviation.net_prism),
+        },
+      },
     };
   }
 
   /**
    * eye.p / eye.p_ax(처방값)를 기준으로, 렌더링에서 바로 쓸 눈 회전량을 반환합니다.
-   * - source_prism은 사용자 입력(처방값) 그대로
-   * - source_tilt는 사용자 입력 eye.tilt(deg) 그대로
    * - x_deg/y_deg는 프리즘 회전량에 eye.tilt를 합산한 최종 렌더 회전량입니다.
    */
-  public getEyeRotationForRender(): EyeRotationForRender {
+  public getEyeRotation(): EyeRotationForRender {
     const rx = this.prismVectorFromBase(this.eyePrismPrescription.p, this.eyePrismPrescription.p_ax);
     const eyeEffect = this.vectorToPrismInfo(rx.x, rx.y);
     const xDeg = this.prismComponentToAngleDeg(eyeEffect.x) + this.eyeTiltDeg.y;
@@ -368,8 +409,6 @@ export default class SCAXEngine {
       x_deg: xDeg,
       y_deg: yDeg,
       magnitude_deg: Math.hypot(xDeg, yDeg),
-      source_prism: { ...this.eyePrismPrescription },
-      source_tilt: { ...this.eyeTiltDeg },
     };
   }
 
@@ -530,6 +569,11 @@ export default class SCAXEngine {
     return (surface as unknown as { name?: string }).name;
   }
 
+  private readSurfaceType(surface: Surface) {
+    const value = (surface as unknown as { type?: string }).type;
+    return typeof value === "string" && value.length ? value : "unknown";
+  }
+
   private readSurfacePosition(surface: Surface) {
     return (surface as unknown as { position?: Vector3 }).position;
   }
@@ -616,6 +660,28 @@ export default class SCAXEngine {
       y: yy,
       magnitude,
       angle_deg: magnitude < 1e-12 ? 0 : angleDeg,
+    };
+  }
+
+  private toAstigmatismSummaryItem(value: InducedAstigmatism | null): AstigmatismSummaryItem {
+    const d = Number(value?.d);
+    const axis = Number(value?.tabo_deg);
+    if (!Number.isFinite(d) || d < 1e-9) {
+      return { tabo_deg: 0, d: null };
+    }
+    return {
+      tabo_deg: this.normalizeAngle360(axis),
+      d,
+    };
+  }
+
+  private toPrismSummaryItem(value: PrismVector): PrismSummaryItem {
+    const magnitude = Number(value?.magnitude);
+    return {
+      p_x: Number(value?.x ?? 0),
+      p_y: Number(value?.y ?? 0),
+      prism_angle: this.normalizeAngle360(value?.angle_deg),
+      magnitude: Number.isFinite(magnitude) && magnitude >= 1e-9 ? magnitude : null,
     };
   }
 

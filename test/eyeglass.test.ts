@@ -104,13 +104,13 @@ function applyLensDecenterX(simulator: SCAXEngine, decenterMm: number) {
   const lenses = (simulator as unknown as { lens: unknown[] }).lens;
   for (const lens of lenses) {
     const mutable = lens as {
-      front?: { position?: Vector3 };
-      back?: { position?: Vector3 | null };
+      sphericalSurface?: { position?: Vector3 };
+      toricSurface?: { position?: Vector3 | null };
       position?: Vector3;
     };
     if (mutable.position) mutable.position.x += decenterMm;
-    if (mutable.front?.position) mutable.front.position.x += decenterMm;
-    if (mutable.back?.position) mutable.back.position.x += decenterMm;
+    if (mutable.sphericalSurface?.position) mutable.sphericalSurface.position.x += decenterMm;
+    if (mutable.toricSurface?.position) mutable.toricSurface.position.x += decenterMm;
   }
 }
 
@@ -118,13 +118,13 @@ function applyLensDecenterY(simulator: SCAXEngine, decenterMm: number) {
   const lenses = (simulator as unknown as { lens: unknown[] }).lens;
   for (const lens of lenses) {
     const mutable = lens as {
-      front?: { position?: Vector3 };
-      back?: { position?: Vector3 | null };
+      sphericalSurface?: { position?: Vector3 };
+      toricSurface?: { position?: Vector3 | null };
       position?: Vector3;
     };
     if (mutable.position) mutable.position.y += decenterMm;
-    if (mutable.front?.position) mutable.front.position.y += decenterMm;
-    if (mutable.back?.position) mutable.back.position.y += decenterMm;
+    if (mutable.sphericalSurface?.position) mutable.sphericalSurface.position.y += decenterMm;
+    if (mutable.toricSurface?.position) mutable.toricSurface.position.y += decenterMm;
   }
 }
 
@@ -133,12 +133,12 @@ function applyLensTiltY(simulator: SCAXEngine, tiltDeg: number) {
   for (const lens of lenses) {
     const mutable = lens as {
       tilt?: { y: number };
-      front?: { tilt?: { y: number } };
-      back?: { tilt?: { y: number } | null };
+      sphericalSurface?: { tilt?: { y: number } };
+      toricSurface?: { tilt?: { y: number } | null };
     };
     if (mutable.tilt) mutable.tilt.y += tiltDeg;
-    if (mutable.front?.tilt) mutable.front.tilt.y += tiltDeg;
-    if (mutable.back?.tilt) mutable.back.tilt.y += tiltDeg;
+    if (mutable.sphericalSurface?.tilt) mutable.sphericalSurface.tilt.y += tiltDeg;
+    if (mutable.toricSurface?.tilt) mutable.toricSurface.tilt.y += tiltDeg;
   }
 }
 
