@@ -1,6 +1,13 @@
 # scax-engine
 
-Lightweight TypeScript optical simulation engine for ray tracing, Sturm analysis, affine distortion estimation, and induced astigmatism calculation.
+TypeScript optical simulation library for a model eye (Gullstrand / Navarro): ray tracing, Sturm interval analysis, affine distortion estimation, and induced astigmatism / prism deviation. Ships ESM, CJS, and UMD builds.
+
+Korean documentation: [README.md](README.md)
+
+## Requirements
+
+- **Node.js** 20 or later (local development and tests)
+- Runtime dependency: **three** (declared by this package)
 
 ## Roadmap
 
@@ -35,12 +42,13 @@ const engine = new SCAXEngine({
   pupil_type: "neutral",
 });
 
-const result: ReturnType<SCAXEngine["simulate"]> = engine.simulate();
+const result = engine.simulate();
 console.log(result.traced_rays.length);
 console.log(result.induced_astigmatism);
+console.log(result.light_deviation);
 ```
 
-To reuse a single engine instance in UI flows (sliders, animation), call `update` with a full `props` object and then call `simulate` again instead of creating `new SCAXEngine` on every change. Omitted top-level fields fall back to constructor defaults (fresh apply, not deep merge with previous run).
+To reuse one engine instance in UI flows (sliders, animation), call `update` with a **full** `props` object, then `simulate` again instead of `new SCAXEngine` on every change. Omitted top-level keys are **not** deep-merged with the previous run; they fall back to constructor defaults.
 
 ```ts
 const engine = new SCAXEngine({ /* initial props */ });
@@ -65,31 +73,40 @@ Creates a simulation engine instance. Internal `Sturm` and `Affine` helpers are 
 #### `props`
 
 - `eyeModel?: "gullstrand" | "navarro"` (default: `"gullstrand"`)
-- `eye?: { s: number; c: number; ax: number; p?: number; p_ax?: number }` (default: `{ s: 0, c: 0, ax: 0, p: 0, p_ax: 0 }`)
+- `eye?: { s, c, ax, p?, p_ax?, tilt? }` (default: `{ s: 0, c: 0, ax: 0, p: 0, p_ax: 0 }`)
+  - `tilt?: { x?: number; y?: number }` — degrees; folded into render rotation / eye pose.
 - `lens?: LensConfig[]` (default: `[]`)
-  - `LensConfig = { s, c, ax, p?: number, p_ax?: number, position: { x, y, z }, tilt: { x, y } }`
-  - `position.z` defaults to vertex distance `12(mm)` when omitted
+  - `LensConfig = { s, c, ax, p?, p_ax?, position: { x, y, z }, tilt: { x, y } }`
+  - If `position.z` is omitted, the default spectacle **vertex distance 12 mm** is used.
 - `light_source?: LightSourceConfig`
-  - Grid: `{ type: "grid", width, height, division, z, vergence }`
-  - Radial: `{ type: "radial", radius, division, angle_division, z, vergence }`
-  - default is grid source `{ width: 10, height: 10, division: 4, z: -10, vergence: 0 }`
-- `pupil_type?: "constricted" | "neutral" | "dilated"` (default: `"neutral"`)
+  - Grid: `{ type: "grid", width, height, division, z, vergence, position?, tilt? }`
+  - Chromatic grid: `{ type: "grid_rg", ... }` — for each grid point, emits Fraunhofer **e**- and **C**-line rays (`division` must be greater than 4).
+  - Radial: `{ type: "radial", radius, division, angle_division, z, vergence, position?, tilt? }`
+  - Optional `position` and `tilt` (degrees) offset / orient the source.
+  - Default: `{ type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 }`
+- `pupil_type?: "constricted" | "neutral" | "dilated" | "none"` (default: `"neutral"`)
+  - `"none"` disables entrance-pupil clipping.
 
-The same `props` options apply to `update()` (see below). If you pass a partial object to `update`, omitted top-level keys are filled with constructor defaults, not previous `update` values. To change one field while keeping others, build and pass a full `props` object each time.
+The same `props` rules apply to `update()`. If you pass a partial object, omitted top-level keys are always filled from **defaults**, not from the previous `update`. Build a full `props` object in your app when you change a single field.
+
+#### Prism input convention
+
+- `eye.p` / `eye.p_ax` are **prescription (correction) amounts**.
+- `lens.p` / `lens.p_ax` are **prescription (correction) amounts**.
+- `p_ax` is the clinical **base** direction, in the **lens-facing-the-cornea** frame.
+- For `light_deviation`, the eye prism contribution uses the opposite vector to represent actual ocular deviation.
+- The lens is a physical refracting element, so ray tracing uses the prescribed deviation direction as given.
+- When correction matches, lens and eye prism agree in magnitude and axis and `net_prism` is near zero.
 
 ### `engine.update(props?)`
 
-Re-runs the same configuration path as the constructor: rebuilds eye/lens/surfaces/light source from `props` and uses the defaults above for omitted keys. It does not merge with previous in-memory settings.
+Re-runs the same configuration path as the constructor: rebuilds eye, lens, surfaces, and light source from `props`.
 
-- `Sturm` and `Affine` instances are **not** recreated; cached Sturm/affine results from before `update` are cleared until those analyses are run again.
+- `Sturm` and `Affine` instances are not recreated, but cached Sturm / affine results are cleared until you run `simulate` (or equivalent) again.
 
-#### `props`
+### Instance methods
 
-Same shape and defaults as **`new SCAXEngine(props?)`** above.
-
-### Instance Methods
-
-- `update(props?)` — reconfigure the engine; see **`engine.update(props?)`** above.
+- `update(props?)` — same as above.
 
 - `simulate()`
   ```ts
@@ -100,26 +117,17 @@ Same shape and defaults as **`new SCAXEngine(props?)`** above.
       eye: { d: number; tabo_deg: number } | null;
       lens: { d: number; tabo_deg: number } | null;
     };
-    deviation_from_baseline: {
-      baseline: { x: number; y: number; z: number };
-      current: { x: number; y: number; z: number };
-      dx: number;
-      dy: number;
-      dz: number;
-      magnitude_xy: number;
-      magnitude_xyz: number;
-    } | null;
     light_deviation: {
-      eye_prism_effect: { x: number; y: number; magnitude: number; angle_deg: number };
-      lens_prism_total: { x: number; y: number; magnitude: number; angle_deg: number };
-      net_prism: { x: number; y: number; magnitude: number; angle_deg: number };
+      eye_prism_effect: PrismVector;
+      lens_prism_total: PrismVector;
+      net_prism: PrismVector;
       x_angle_deg: number;
       y_angle_deg: number;
       net_angle_deg: number;
     };
   }
   ```
-  - Runs ray tracing, induced astigmatism, baseline deviation, and light deviation calculation
+  - Ray tracing, induced astigmatism summary, and prism / angle deviation.
 
 - `getEyeRotationForRender()`
   ```ts
@@ -128,81 +136,24 @@ Same shape and defaults as **`new SCAXEngine(props?)`** above.
     y_deg: number;
     magnitude_deg: number;
     source_prism: { p: number; p_ax: number };
+    source_tilt: { x: number; y: number };
   }
   ```
-  - Returns eye rotation values for rendering (based on eye prism prescription)
+  - Eye rotation for rendering from prescribed prism plus `eye.tilt`.
 
-- `getSturmGapAnalysis()`
-  ```ts
-  (): {
-    slices_info: {
-      count: number;
-      slices: Array<{
-        z: number;
-        ratio: number;
-        size: number;
-        profile: {
-          at: { x: number; y: number; z: number };
-          wMajor: number;
-          wMinor: number;
-          angleMajorDeg: number;
-          angleMinorDeg: number;
-        };
-      }>;
-    };
-    sturm_info: Array<{
-      line: "g" | "F" | "e" | "d" | "C" | "r";
-      wavelength_nm: number;
-      color: number | null;
-      has_astigmatism: boolean;
-      method: "sturm-interval-midpoint" | "minimum-ellipse";
-      anterior: {
-        z: number;
-        ratio: number;
-        size: number;
-        profile: {
-          at: { x: number; y: number; z: number };
-          wMajor: number;
-          wMinor: number;
-          angleMajorDeg: number;
-          angleMinorDeg: number;
-        };
-      } | null;
-      posterior: {
-        z: number;
-        ratio: number;
-        size: number;
-        profile: {
-          at: { x: number; y: number; z: number };
-          wMajor: number;
-          wMinor: number;
-          angleMajorDeg: number;
-          angleMinorDeg: number;
-        };
-      } | null;
-      approx_center: { x: number; y: number; z: number; mode: "top2-mid" | "min-size" | "top1-flat" } | null;
-    }>;
-  } | null
-  ```
-  - Returns the latest Sturm analysis result
+- `rayTracing()` — runs ray tracing only and returns traced `Ray[]`. `simulate()` runs tracing plus Sturm, induced astigmatism, and deviation.
 
-- `getAffineAnalysis()`
-  ```ts
-  (): {
-    a: number; b: number; c: number; d: number; e: number; f: number;
-    count: number;
-    residualAvgPct: number;
-    residualMaxPct: number;
-    residuals: Array<{
-      sx: number; sy: number; px: number; py: number; rx: number; ry: number; magnitude: number; pct: number;
-    }>;
-  } | null
-  ```
-  - Returns the latest affine analysis result
+- `sturmCalculation(rays?)` — computes Sturm slices and per–Fraunhofer-line summaries for the given rays (defaults to the last `rayTracing` / `simulate` output). `simulate()` already refreshes Sturm internally.
 
-## UMD Usage
+- `getAffineAnalysis()` — builds retina correspondence pairs for the current setup, fits an affine map (or returns cache). May be `null` when there are not enough valid pairs.
 
-UMD build is generated at `dist/scax-engine.umd.js` and exposed as `ScaxEngine`.
+- `estimateAffineDistortion(pairs)` / `affine2d(pairs)` — fit a 2D affine from your own `AffinePair[]`. `affine2d` is a compatibility alias.
+
+- `calculateInducedAstigmatism(eye, lens)` — induced astigmatism summary for supplied powers (also used inside `simulate`).
+
+## UMD
+
+The UMD bundle is written to `dist/scax-engine.umd.js` and exposes the global **`ScaxEngine`**.
 
 ## Development
 
@@ -214,10 +165,12 @@ npm test
 
 ### Scripts
 
-- `npm run clean` - remove `dist`
-- `npm run build` - build ESM/CJS/UMD bundles and type declarations
-- `npm test` - run Vitest once
-- `npm run test:watch` - run Vitest in watch mode
+- `npm run clean` — remove `dist`
+- `npm run build` — type declarations and ESM / CJS / UMD bundles
+- `npm test` — run Vitest once
+- `npm run test:watch` — Vitest watch mode
+
+For a manual browser playground, open `test/ui-test/ui-test.html` (you may need to point script tags at your built output).
 
 ## Publish
 
@@ -226,3 +179,7 @@ npm run build
 npm test
 npm publish --access public
 ```
+
+## License
+
+MIT

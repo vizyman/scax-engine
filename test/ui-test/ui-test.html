@@ -390,6 +390,21 @@
         window.history.replaceState(null, "", nextUrl);
       }
       let refreshTimer = null;
+      /** 정시 시뮬 아핀 계수: 최초 성공 시 1회만 저장. 렌즈/눈 도수 변경 후에도 갱신하지 않음 */
+      let frozenOrthoAffineResult = null;
+
+      function snapshotAffineCoefficients(ar) {
+        if (!ar) return null;
+        const a = Number(ar.a);
+        const b = Number(ar.b);
+        const c = Number(ar.c);
+        const d = Number(ar.d);
+        const e = Number(ar.e);
+        const f = Number(ar.f);
+        if (![a, b, c, d, e, f].every(Number.isFinite)) return null;
+        return { a, b, c, d, e, f, count: Number(ar.count) || 0 };
+      }
+
       function requestSimulationRefresh() {
         syncUrlWithState();
         if (refreshTimer !== null) window.clearTimeout(refreshTimer);
@@ -852,34 +867,180 @@
         return Number.isFinite(Number(value)) ? Number(value).toExponential(digits) : "NaN";
       }
 
-      function estimateAffineDomain(affineResult) {
-        if (!affineResult) return 6 * 1.05;
-        const gridExtent = 6;
-        const gridStep = gridExtent / 3;
-        function affineMapLocal(result, x, y) {
-          return {
-            x: result.a * x + result.b * y + result.c,
-            y: result.d * x + result.e * y + result.f,
-          };
-        }
-        let maxAbs = gridExtent;
-        for (let i = -3; i <= 3; i += 1) {
-          for (let t = -30; t <= 30; t += 1) {
-            const s = (t / 30) * gridExtent;
-            const p1 = affineMapLocal(affineResult, i * gridStep, s);
-            const p2 = affineMapLocal(affineResult, s, i * gridStep);
-            maxAbs = Math.max(
-              maxAbs,
-              Math.abs(p1.x), Math.abs(p1.y),
-              Math.abs(p2.x), Math.abs(p2.y),
-            );
-          }
-        }
-        return Math.max(gridExtent * 1.05, maxAbs * 1.15);
+      /** det([[a,b],[d,e]]) */
+      function affineLinearDet(a, b, d, e) {
+        return a * e - b * d;
       }
 
+      /** 선형 부분을 √( |det| )로 나눠 면적 스케일 제거 */
+      function normalizeAffineLinearPart(ar) {
+        const a = Number(ar.a);
+        const b = Number(ar.b);
+        const d = Number(ar.d);
+        const e = Number(ar.e);
+        const det = affineLinearDet(a, b, d, e);
+        const s = Math.sqrt(Math.abs(det));
+        if (!Number.isFinite(s) || s < 1e-14) return null;
+        return { a: a / s, b: b / s, d: d / s, e: e / s };
+      }
 
-      function drawAffineGrid(canvasCtx, affineResult) {
+      function frobeniusNorm22Diff(m1, m2) {
+        if (!m1 || !m2) return NaN;
+        const da = m1.a - m2.a;
+        const db = m1.b - m2.b;
+        const dd = m1.d - m2.d;
+        const de = m1.e - m2.e;
+        return Math.sqrt(da * da + db * db + dd * dd + de * de);
+      }
+
+      /** L^T L 고유값 → σ₁ ≥ σ₂, 비율 σ₁/σ₂ (안쪽 필 압축·타원성) */
+      function singularValueRatioFromAffine(ar) {
+        const a = Number(ar.a);
+        const b = Number(ar.b);
+        const d = Number(ar.d);
+        const e = Number(ar.e);
+        const s11 = a * a + d * d;
+        const s12 = a * b + d * e;
+        const s22 = b * b + e * e;
+        const trace = s11 + s22;
+        const detLtL = s11 * s22 - s12 * s12;
+        const disc = Math.max(0, trace * trace - 4 * detLtL);
+        const lamMax = (trace + Math.sqrt(disc)) / 2;
+        const lamMin = (trace - Math.sqrt(disc)) / 2;
+        const sig1 = Math.sqrt(Math.max(0, lamMax));
+        const sig2 = Math.sqrt(Math.max(0, lamMin));
+        if (sig2 < 1e-14) return Number.POSITIVE_INFINITY;
+        return sig1 / sig2;
+      }
+
+      function meanCornerDisplacementMm(affineCurr, affineRef, extent) {
+        function map(ar, x, y) {
+          return {
+            x: ar.a * x + ar.b * y + ar.c,
+            y: ar.d * x + ar.e * y + ar.f,
+          };
+        }
+        const corners = [
+          [-extent, -extent],
+          [extent, -extent],
+          [extent, extent],
+          [-extent, extent],
+        ];
+        let sum = 0;
+        for (let i = 0; i < corners.length; i += 1) {
+          const p = map(affineCurr, corners[i][0], corners[i][1]);
+          const q = map(affineRef, corners[i][0], corners[i][1]);
+          sum += Math.hypot(p.x - q.x, p.y - q.y);
+        }
+        return sum / 4;
+      }
+
+      /** 정시·무프리즘·무틸트: 동일 도수/광원/렌즈 형상에서 눈·안경 편위만 제거한 참조 시뮬용 */
+      function buildOrthophoricReferenceState(state) {
+        return Object.assign({}, state, {
+          eyeP: 0,
+          eyePAx: 0,
+          eyeTiltX: 0,
+          eyeTiltY: 0,
+          spectacleP: 0,
+          spectaclePAx: 0,
+        });
+      }
+
+      function computeAffineDistortionMetrics(affineCurr, affineRef) {
+        if (!affineCurr) return null;
+        const sigmaRatio = singularValueRatioFromAffine(affineCurr);
+        const base = {
+          sigmaRatio: sigmaRatio,
+          sigmaRatioStr: Number.isFinite(sigmaRatio) && sigmaRatio < 1e6
+            ? sigmaRatio.toFixed(4)
+            : "∞",
+          residualAvgPct: Number(affineCurr.residualAvgPct),
+          frobShape: NaN,
+          cornerMeanMm: NaN,
+          refAvailable: Boolean(affineRef),
+        };
+        if (!affineRef) return base;
+        const nCurr = normalizeAffineLinearPart(affineCurr);
+        const nRef = normalizeAffineLinearPart(affineRef);
+        base.cornerMeanMm = meanCornerDisplacementMm(affineCurr, affineRef, 6);
+        if (nCurr && nRef) {
+          base.frobShape = frobeniusNorm22Diff(nCurr, nRef);
+        }
+        return base;
+      }
+
+      function drawAffineDistortionHint(canvasCtx, plotLeft, yBase, metrics) {
+        canvasCtx.save();
+        canvasCtx.font = "10px Arial";
+        canvasCtx.textAlign = "left";
+        canvasCtx.fillStyle = "#94a3b8";
+        const lines = [];
+        if (!metrics) {
+          lines.push("왜곡 지표: —");
+        } else {
+          lines.push(
+            "σ₁/σ₂ (현재 선형): " + metrics.sigmaRatioStr +
+              "  ·  residual avg: " + toFixedOrNa(metrics.residualAvgPct, 3) + "%",
+          );
+          if (metrics.refAvailable) {
+            const frobPart = Number.isFinite(metrics.frobShape)
+              ? "‖N_curr−N_ref‖_F=" + toFixedOrNa(metrics.frobShape, 4)
+              : "‖N_curr−N_ref‖_F=n/a (특이)";
+            lines.push(
+              frobPart +
+                "  ·  코너 평균 Δ(vs 초기 정시): " + toFixedOrNa(metrics.cornerMeanMm, 4) + " mm",
+            );
+          } else {
+            lines.push("정시 참조 아핀 없음 — 위 항목만 유효");
+          }
+        }
+        for (let i = 0; i < lines.length; i += 1) {
+          canvasCtx.fillText(lines[i], plotLeft + 2, yBase + i * 12);
+        }
+        canvasCtx.restore();
+      }
+
+      function drawAffineMappedGrid(canvasCtx, affineResult, toCanvas, affineMap, gridExtent, gridStep, style) {
+        canvasCtx.strokeStyle = style.stroke;
+        canvasCtx.lineWidth = style.lineWidth;
+        canvasCtx.setLineDash(style.dash || []);
+        canvasCtx.globalAlpha = style.alpha != null ? style.alpha : 1;
+        for (let i = -3; i <= 3; i += 1) {
+          let started = false;
+          canvasCtx.beginPath();
+          for (let t = -30; t <= 30; t += 1) {
+            const s = (t / 30) * gridExtent;
+            const mapped = affineMap(affineResult, i * gridStep, s);
+            const point = toCanvas(mapped.x, mapped.y);
+            if (!started) {
+              canvasCtx.moveTo(point.x, point.y);
+              started = true;
+            } else {
+              canvasCtx.lineTo(point.x, point.y);
+            }
+          }
+          canvasCtx.stroke();
+          started = false;
+          canvasCtx.beginPath();
+          for (let t = -30; t <= 30; t += 1) {
+            const s = (t / 30) * gridExtent;
+            const mapped = affineMap(affineResult, s, i * gridStep);
+            const point = toCanvas(mapped.x, mapped.y);
+            if (!started) {
+              canvasCtx.moveTo(point.x, point.y);
+              started = true;
+            } else {
+              canvasCtx.lineTo(point.x, point.y);
+            }
+          }
+          canvasCtx.stroke();
+        }
+        canvasCtx.setLineDash([]);
+        canvasCtx.globalAlpha = 1;
+      }
+
+      function drawAffineGrid(canvasCtx, affineResult, affineResultRef, distortionMetrics) {
         const width = canvasCtx.canvas.width;
         const height = canvasCtx.canvas.height;
         canvasCtx.clearRect(0, 0, width, height);
@@ -894,24 +1055,27 @@
         }
         const sourceColor = "#f59e0b";
         const imageColor = "#22d3ee";
-        const entry = { result: affineResult };
+        /** 정시 시뮬 아핀 격자: 시안 실선 위에 분홍 점선 */
+        const imageRefColor = "#f472b6";
 
         const margin = 18;
         const plotLeft = margin;
-        const plotTop = 26;
+        const plotTop = 30;
+        const bottomReserve = 38;
         const plotWidth = width - margin * 2;
-        const plotHeight = height - margin - plotTop;
+        const plotHeight = height - margin - plotTop - bottomReserve;
         const gridExtent = 6;
         const gridStep = gridExtent / 3;
 
-        function affineMap(affineResult, x, y) {
+        function affineMap(ar, x, y) {
           return {
-            x: affineResult.a * x + affineResult.b * y + affineResult.c,
-            y: affineResult.d * x + affineResult.e * y + affineResult.f,
+            x: ar.a * x + ar.b * y + ar.c,
+            y: ar.d * x + ar.e * y + ar.f,
           };
         }
 
-        const domain = estimateAffineDomain(entry.result);
+        /** 광원 기준 도메인 고정: 항상 ±gridExtent 가 플롯을 가득 채움 */
+        const domain = gridExtent;
         const scale = Math.min((plotWidth - 2) / (domain * 2), (plotHeight - 2) / (domain * 2));
         const originX = plotLeft + plotWidth / 2;
         const originY = plotTop + plotHeight / 2;
@@ -971,48 +1135,83 @@
           canvasCtx.stroke();
         }
 
-        canvasCtx.strokeStyle = imageColor;
-        canvasCtx.lineWidth = 1.5;
-        for (let i = -3; i <= 3; i += 1) {
-          let started = false;
-          canvasCtx.beginPath();
-          for (let t = -30; t <= 30; t += 1) {
-            const s = (t / 30) * gridExtent;
-            const mapped = affineMap(entry.result, i * gridStep, s);
-            const point = toCanvas(mapped.x, mapped.y);
-            if (!started) {
-              canvasCtx.moveTo(point.x, point.y);
-              started = true;
-            } else {
-              canvasCtx.lineTo(point.x, point.y);
-            }
-          }
-          canvasCtx.stroke();
-          started = false;
-          canvasCtx.beginPath();
-          for (let t = -30; t <= 30; t += 1) {
-            const s = (t / 30) * gridExtent;
-            const mapped = affineMap(entry.result, s, i * gridStep);
-            const point = toCanvas(mapped.x, mapped.y);
-            if (!started) {
-              canvasCtx.moveTo(point.x, point.y);
-              started = true;
-            } else {
-              canvasCtx.lineTo(point.x, point.y);
-            }
-          }
-          canvasCtx.stroke();
+        canvasCtx.save();
+        canvasCtx.beginPath();
+        canvasCtx.rect(plotLeft, plotTop, plotWidth, plotHeight);
+        canvasCtx.clip();
+
+        drawAffineMappedGrid(
+          canvasCtx,
+          affineResult,
+          toCanvas,
+          affineMap,
+          gridExtent,
+          gridStep,
+          {
+            stroke: imageColor,
+            lineWidth: 1.55,
+            dash: [],
+            alpha: 1,
+          },
+        );
+        if (affineResultRef) {
+          drawAffineMappedGrid(
+            canvasCtx,
+            affineResultRef,
+            toCanvas,
+            affineMap,
+            gridExtent,
+            gridStep,
+            {
+              stroke: imageRefColor,
+              lineWidth: 2.1,
+              dash: [7, 5],
+              alpha: 1,
+            },
+          );
+        }
+        canvasCtx.restore();
+
+        if (!affineResultRef) {
+          canvasCtx.save();
+          canvasCtx.font = "10px Arial";
+          canvasCtx.textAlign = "left";
+          canvasCtx.fillStyle = "#f87171";
+          canvasCtx.fillText(
+            "정시 참조 아핀 없음 — 광선/쌍 부족 시 참조 격자가 그려지지 않습니다.",
+            plotLeft + 4,
+            plotTop + 14,
+          );
+          canvasCtx.restore();
         }
 
-        canvasCtx.font = "11px Arial";
+        drawAffineDistortionHint(
+          canvasCtx,
+          plotLeft,
+          plotTop + plotHeight + 6,
+          distortionMetrics || computeAffineDistortionMetrics(affineResult, affineResultRef),
+        );
+
+        canvasCtx.font = "10px Arial";
+        canvasCtx.textAlign = "left";
         canvasCtx.fillStyle = sourceColor;
-        canvasCtx.fillRect(plotLeft, 8, 12, 8);
+        canvasCtx.fillRect(plotLeft, 6, 10, 10);
         canvasCtx.fillStyle = "#cbd5e1";
-        canvasCtx.fillText("Source Rays", plotLeft + 16, 15);
+        canvasCtx.fillText("광원(고정)", plotLeft + 14, 14);
+        canvasCtx.strokeStyle = imageRefColor;
+        canvasCtx.lineWidth = 2;
+        canvasCtx.setLineDash([5, 4]);
+        canvasCtx.beginPath();
+        canvasCtx.moveTo(plotLeft + 86, 11);
+        canvasCtx.lineTo(plotLeft + 104, 11);
+        canvasCtx.stroke();
+        canvasCtx.setLineDash([]);
+        canvasCtx.fillStyle = "#cbd5e1";
+        canvasCtx.fillText("정시(초기고정)", plotLeft + 106, 14);
         canvasCtx.fillStyle = imageColor;
-        canvasCtx.fillRect(plotLeft + 120, 8, 12, 8);
+        canvasCtx.fillRect(plotLeft + 200, 6, 10, 10);
         canvasCtx.fillStyle = "#cbd5e1";
-        canvasCtx.fillText("Current Image", plotLeft + 136, 15);
+        canvasCtx.fillText("현재 상", plotLeft + 214, 14);
       }
 
 
@@ -1186,6 +1385,30 @@
           .filter(Boolean)
           .length;
         const affineResult = engine.getAffineAnalysis();
+        if (!frozenOrthoAffineResult) {
+          const orthoRefState = buildOrthophoricReferenceState(uiState);
+          const refEngineOnce = new ScaxEngine.SCAXEngine({
+            eyeModel: orthoRefState.eyeModel,
+            pupil_type: orthoRefState.pupilType,
+            eye: {
+              s: orthoRefState.eyeS,
+              c: orthoRefState.eyeC,
+              ax: orthoRefState.eyeAx,
+              p: orthoRefState.eyeP,
+              p_ax: orthoRefState.eyePAx,
+              tilt: {
+                x: orthoRefState.eyeTiltX,
+                y: orthoRefState.eyeTiltY,
+              },
+            },
+            lens: buildLensConfigs(orthoRefState),
+            light_source: buildLightSourceConfig(orthoRefState),
+          });
+          refEngineOnce.simulate();
+          frozenOrthoAffineResult = snapshotAffineCoefficients(refEngineOnce.getAffineAnalysis());
+        }
+        const affineResultRef = frozenOrthoAffineResult;
+        const affineDistortionMetrics = computeAffineDistortionMetrics(affineResult, affineResultRef);
         const sturmResult = engine.sturmCalculation(tracedRays);
         const sturmInfo = Array.isArray(sturmResult?.sturm_info) ? sturmResult.sturm_info : [];
         const sourceRays = engine?.light_source?.emitRays ? engine.light_source.emitRays() : [];
@@ -1598,9 +1821,28 @@
             "status: unavailable\n" +
             "pairs: " + affinePairCount + " (need >= 4)";
         } else {
+          const dist = affineDistortionMetrics;
+          const distBlock = dist
+            ? (
+                "왜곡 (vs 세션 최초 정시 아핀, 고정):\n" +
+                "  σ₁/σ₂ (현재 선형): " + dist.sigmaRatioStr +
+                "  ·  residual avg: " + toFixedOrNa(dist.residualAvgPct, 4) + "%\n" +
+                (
+                  dist.refAvailable
+                    ? (
+                        "  ‖N_curr−N_ref‖_F: " + (Number.isFinite(dist.frobShape)
+                          ? toFixedOrNa(dist.frobShape, 6)
+                          : "n/a") +
+                        "  ·  코너 평균 Δ: " + toFixedOrNa(dist.cornerMeanMm, 6) + " mm\n"
+                      )
+                    : "  (정시 참조 아핀 없음)\n"
+                )
+              )
+            : "";
           affineMeta.textContent =
             "current pairs: " + affineResult.count + "\n" +
-            "[x'; y'] = [[a b c], [d e f]] [x y 1]^T\n" +
+            distBlock +
+            "[x'; y'] = [[a b c], [d e f]] [x y 1]^T (현재)\n" +
             "a=" + toFixedOrNa(affineResult.a, 6) +
             ", b=" + toFixedOrNa(affineResult.b, 6) +
             ", c=" + toFixedOrNa(affineResult.c, 6) + "\n" +
@@ -1617,7 +1859,7 @@
               3,
             );
         }
-        drawAffineGrid(affineCtx, affineResult);
+        drawAffineGrid(affineCtx, affineResult, affineResultRef, affineDistortionMetrics);
       }
       runSimulationAndRender();
 

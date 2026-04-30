@@ -1,13 +1,19 @@
 # scax-engine
 
-광선 추적(ray tracing), Sturm 분석, 아핀 왜곡 추정, 유발 난시 계산을 위한 경량 TypeScript 광학 시뮬레이션 엔진입니다.
+눈 모델(Gullstrand / Navarro)에 대한 광선 추적, Sturm 간격 분석, 아핀 왜곡 추정, 유발 난시·프리즘 편위 계산을 제공하는 TypeScript 광학 시뮬레이션 라이브러리입니다. ESM, CJS, UMD 빌드를 지원합니다.
+
+English documentation: [README-en.md](README-en.md)
+
+## 요구 사항
+
+- **Node.js** 20 이상(로컬 개발·테스트)
+- 런타임 의존성: **three** (패키지에 포함됨)
 
 ## Roadmap
-- 근축광선일수록 정확도가 높아 집니다.
+
+- 근축광선일수록 정확도가 높아집니다.
 - 이 프로젝트는 단안 시각화를 지원합니다.
 - 모형안 모델의 한계로 가입도(Add)는 지원 계획이 없습니다.
-
-영문 문서는 `README-en.md`를 참고해 주세요.
 
 ## 설치
 
@@ -36,12 +42,13 @@ const engine = new SCAXEngine({
   pupil_type: "neutral",
 });
 
-const result: ReturnType<SCAXEngine["simulate"]> = engine.simulate();
+const result = engine.simulate();
 console.log(result.traced_rays.length);
 console.log(result.induced_astigmatism);
+console.log(result.light_deviation);
 ```
 
-UI(슬라이더, 애니메이션 등)에서 변경마다 `new SCAXEngine`을 다시 만들지 않고 하나의 엔진 인스턴스를 재사용하려면, 전체 `props` 객체로 `update`를 호출한 뒤 `simulate`를 다시 실행하세요. `update`에서 생략된 최상위 필드는 이전 상태를 유지하지 않고 생성자 기본값으로 채워집니다(이전 실행과 deep merge되지 않음).
+UI(슬라이더, 애니메이션 등)에서 변경마다 `new SCAXEngine`을 다시 만들지 않고 하나의 엔진 인스턴스를 재사용하려면, 전체 `props` 객체로 `update`를 호출한 뒤 `simulate`를 다시 실행하세요. `update`에서 생략된 최상위 필드는 이전 상태와 병합되지 않으며 생성자 기본값으로 채워집니다.
 
 ```ts
 const engine = new SCAXEngine({ /* initial props */ });
@@ -66,40 +73,40 @@ const next = engine.simulate();
 #### `props`
 
 - `eyeModel?: "gullstrand" | "navarro"` (기본값: `"gullstrand"`)
-- `eye?: { s: number; c: number; ax: number; p?: number; p_ax?: number }` (기본값: `{ s: 0, c: 0, ax: 0, p: 0, p_ax: 0 }`)
+- `eye?: { s, c, ax, p?, p_ax?, tilt? }` (기본값: `{ s: 0, c: 0, ax: 0, p: 0, p_ax: 0 }`)
+  - `tilt?: { x?: number; y?: number }` — 각도(도); 렌더 회전·눈 자세에 반영됩니다.
 - `lens?: LensConfig[]` (기본값: `[]`)
-  - `LensConfig = { s, c, ax, p?: number, p_ax?: number, position: { x, y, z }, tilt: { x, y } }`
-  - `position.z`를 생략하면 vertex distance 기본값 `12(mm)`가 적용됩니다.
+  - `LensConfig = { s, c, ax, p?, p_ax?, position: { x, y, z }, tilt: { x, y } }`
+  - `position.z`를 생략하면 안경 전점 거리 기본값 **12 mm**가 적용됩니다.
 - `light_source?: LightSourceConfig`
-  - Grid: `{ type: "grid", width, height, division, z, vergence }`
-  - Radial: `{ type: "radial", radius, division, angle_division, z, vergence }`
-  - 기본값은 grid 소스 `{ width: 10, height: 10, division: 4, z: -10, vergence: 0 }`입니다.
-- `pupil_type?: "constricted" | "neutral" | "dilated"` (기본값: `"neutral"`)
+  - Grid: `{ type: "grid", width, height, division, z, vergence, position?, tilt? }`
+  - Grid (색수차): `{ type: "grid_rg", ... }` — 격자 각 점에서 Fraunhofer **e**선·**C**선 광선을 함께 생성합니다(`division`은 4보다 커야 함).
+  - Radial: `{ type: "radial", radius, division, angle_division, z, vergence, position?, tilt? }`
+  - 공통으로 `position`·`tilt`(도)를 두면 광원 기준 위치·기울기를 바꿀 수 있습니다.
+  - 기본값: `{ type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 }`
+- `pupil_type?: "constricted" | "neutral" | "dilated" | "none"` (기본값: `"neutral"`)
+  - `"none"`이면 동공(입사 구경) 제한을 끕니다.
 
-동일한 `props` 옵션이 `update()`에도 적용됩니다(아래 참고). `update`에 부분 객체만 전달하면 생략된 최상위 키는 이전 `update` 값이 아니라 생성자 기본값으로 채워집니다. 하나만 바꾸고 나머지를 유지하려면 앱 상태에서 항상 전체 `props`를 구성해 전달하세요.
+동일한 `props` 규칙이 `update()`에도 적용됩니다. 부분 객체만 넘기면 생략된 최상위 키는 이전 `update` 값이 아니라 **항상 기본값**으로 채워지므로, 한 필드만 바꾸려면 앱에서 전체 `props`를 조립해 넘기는 것이 안전합니다.
 
 #### 프리즘 입력 컨벤션
 
-- `eye.p/p_ax`는 **교정량(처방값)** 입니다.
-- `lens.p/p_ax`도 **교정량(처방값)** 입니다.
-- `p_ax` 각도 기준은 **렌즈 쪽에서 각막을 바라보는 시점**입니다.
-- 내부 `light_deviation` 계산에서 eye는 "실제 눈 편위"를 표현하기 위해 반대벡터(`-eye`)로 변환됩니다.
-- lens는 실제 광선을 굴절시키는 물리 요소이므로, 광선 추적에는 입력 방향(`+lens`)이 그대로 적용됩니다.
-- 따라서 교정 완료 조건은 `lens prism == eye prism`(크기/축 동일)이며, 이때 `net_prism`은 0에 가까워집니다.
+- `eye.p` / `eye.p_ax`는 **교정량(처방값)** 입니다.
+- `lens.p` / `lens.p_ax`도 **교정량(처방값)** 입니다.
+- `p_ax`는 **임상 Base 방향**, **렌즈 쪽에서 각막을 바라보는 시점** 기준입니다.
+- `light_deviation` 계산에서 눈 프리즘 효과는 실제 안구 편위를 표현하기 위해 내부에서 역방향으로 변환됩니다.
+- 렌즈는 광선을 굴절시키는 물리 요소이므로, 광선 추적에는 입력 방향이 그대로 적용됩니다.
+- 교정이 맞으면 `lens prism`과 `eye prism`이 크기·축에서 대응하고, 이때 `net_prism`은 0에 가깝습니다.
 
 ### `engine.update(props?)`
 
-생성자와 동일한 설정 경로를 다시 실행합니다. `props`를 기준으로 eye/lens/surfaces/light source를 재구성하며, 생략된 키에는 위 기본값이 적용됩니다. 이전 메모리 설정과 merge되지 않습니다.
+생성자와 동일한 설정 경로를 다시 실행합니다. `props`를 기준으로 eye / lens / 표면 / 광원을 재구성하며, 생략된 키에는 위 기본값이 적용됩니다.
 
-- `Sturm`, `Affine` 인스턴스 자체는 **재생성되지 않지만**, `update` 이전에 캐시된 Sturm/affine 분석 결과는 다시 분석을 수행하기 전까지 초기화됩니다.
-
-#### `props`
-
-형태와 기본값은 위 **`new SCAXEngine(props?)`**와 동일합니다.
+- `Sturm`, `Affine` 인스턴스는 재생성되지 않지만, `update` 직후에는 Sturm·affine 분석 캐시가 비워지며 `simulate` 등으로 다시 채워집니다.
 
 ### 인스턴스 메서드
 
-- `update(props?)` — 엔진 설정을 갱신합니다. 위 **`engine.update(props?)`** 참고.
+- `update(props?)` — 위와 동일.
 
 - `simulate()`
   ```ts
@@ -110,26 +117,17 @@ const next = engine.simulate();
       eye: { d: number; tabo_deg: number } | null;
       lens: { d: number; tabo_deg: number } | null;
     };
-    deviation_from_baseline: {
-      baseline: { x: number; y: number; z: number };
-      current: { x: number; y: number; z: number };
-      dx: number;
-      dy: number;
-      dz: number;
-      magnitude_xy: number;
-      magnitude_xyz: number;
-    } | null;
     light_deviation: {
-      eye_prism_effect: { x: number; y: number; magnitude: number; angle_deg: number };
-      lens_prism_total: { x: number; y: number; magnitude: number; angle_deg: number };
-      net_prism: { x: number; y: number; magnitude: number; angle_deg: number };
+      eye_prism_effect: PrismVector;
+      lens_prism_total: PrismVector;
+      net_prism: PrismVector;
       x_angle_deg: number;
       y_angle_deg: number;
       net_angle_deg: number;
     };
   }
   ```
-  - 광선 추적, 유발 난시, baseline 대비 편위, 빛 편위량 계산을 실행합니다.
+  - 광선 추적, 유발 난시 요약, 빛(프리즘) 편위량을 계산합니다.
 
 - `getEyeRotationForRender()`
   ```ts
@@ -138,82 +136,24 @@ const next = engine.simulate();
     y_deg: number;
     magnitude_deg: number;
     source_prism: { p: number; p_ax: number };
+    source_tilt: { x: number; y: number };
   }
   ```
-  - 렌더링에서 사용할 눈 회전량(eye prism 처방 기준)을 반환합니다.
+  - 처방 프리즘·`eye.tilt`를 반영한 렌더용 눈 회전량을 반환합니다.
 
-- `getSturmGapAnalysis()`
-  ```ts
-  (): {
-    slices_info: {
-      count: number;
-      slices: Array<{
-        z: number;
-        ratio: number;
-        size: number;
-        profile: {
-          at: { x: number; y: number; z: number };
-          wMajor: number;
-          wMinor: number;
-          angleMajorDeg: number;
-          angleMinorDeg: number;
-        };
-      }>;
-    };
-    sturm_info: Array<{
-      line: "g" | "F" | "e" | "d" | "C" | "r";
-      wavelength_nm: number;
-      color: number | null;
-      has_astigmatism: boolean;
-      method: "sturm-interval-midpoint" | "minimum-ellipse";
-      anterior: {
-        z: number;
-        ratio: number;
-        size: number;
-        profile: {
-          at: { x: number; y: number; z: number };
-          wMajor: number;
-          wMinor: number;
-          angleMajorDeg: number;
-          angleMinorDeg: number;
-        };
-      } | null;
-      posterior: {
-        z: number;
-        ratio: number;
-        size: number;
-        profile: {
-          at: { x: number; y: number; z: number };
-          wMajor: number;
-          wMinor: number;
-          angleMajorDeg: number;
-          angleMinorDeg: number;
-        };
-      } | null;
-      approx_center: { x: number; y: number; z: number; mode: "top2-mid" | "min-size" | "top1-flat" } | null;
-    }>;
-  } | null
-  ```
-  - 최신 Sturm 분석 결과를 반환합니다.
+- `rayTracing()` — 광선 추적만 수행해 추적된 `Ray[]`를 반환합니다. `simulate()`는 이를 포함해 Sturm·유발 난시·편위까지 한 번에 계산합니다.
 
-- `getAffineAnalysis()`
-  ```ts
-  (): {
-    a: number; b: number; c: number; d: number; e: number; f: number;
-    count: number;
-    residualAvgPct: number;
-    residualMaxPct: number;
-    residuals: Array<{
-      sx: number; sy: number; px: number; py: number; rx: number; ry: number; magnitude: number; pct: number;
-    }>;
-  } | null
-  ```
-  - 최신 affine 분석 결과를 반환합니다.
+- `sturmCalculation(rays?)` — 추적 광선(인자 생략 시 마지막 `rayTracing`/`simulate` 결과)으로 Sturm 슬라이스·스펙트럼선별 분석 객체를 계산해 반환합니다. `simulate()` 호출 시 내부에서 Sturm도 갱신됩니다.
 
+- `getAffineAnalysis()` — 현재 설정으로 망막 대응점 쌍을 만들어 아핀 적합을 수행(또는 캐시 재사용)합니다. 유효한 쌍이 부족하면 `null`이 될 수 있습니다.
 
-## UMD 사용
+- `estimateAffineDistortion(pairs)` / `affine2d(pairs)` — 직접 `AffinePair[]`를 넘겨 2D 아핀을 적합합니다. `affine2d`는 호환용 별칭입니다.
 
-UMD 빌드는 `dist/scax-engine.umd.js`에 생성되며 전역 `ScaxEngine`으로 노출됩니다.
+- `calculateInducedAstigmatism(eye, lens)` — 주어진 굴절력으로 유발 난시 요약을 계산합니다(`simulate` 내부에서도 사용).
+
+## UMD
+
+UMD 빌드는 `dist/scax-engine.umd.js`에 생성되며 전역 이름 **`ScaxEngine`**으로 노출됩니다.
 
 ## 개발
 
@@ -225,10 +165,12 @@ npm test
 
 ### 스크립트
 
-- `npm run clean` - `dist` 삭제
-- `npm run build` - ESM/CJS/UMD 번들과 타입 선언 빌드
-- `npm test` - Vitest 1회 실행
-- `npm run test:watch` - Vitest watch 모드 실행
+- `npm run clean` — `dist` 삭제
+- `npm run build` — 타입 선언 및 ESM / CJS / UMD 번들 빌드
+- `npm test` — Vitest 1회 실행
+- `npm run test:watch` — Vitest 워치 모드
+
+로컬에서 엔진 동작을 손으로 보려면 `test/ui-test/ui-test.html`을 브라우저에서 열 수 있습니다(빌드 산출물 경로에 맞게 스크립트를 조정해야 할 수 있음).
 
 ## 배포
 
@@ -237,3 +179,7 @@ npm run build
 npm test
 npm publish --access public
 ```
+
+## 라이선스
+
+MIT
