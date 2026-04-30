@@ -867,6 +867,26 @@
         return Number.isFinite(Number(value)) ? Number(value).toExponential(digits) : "NaN";
       }
 
+      function formatAstigmatismMeridianArray(items) {
+        const meridians = Array.isArray(items) ? items : [];
+        if (!meridians.length) return "none";
+        return meridians
+          .map(function (m) {
+            return "(" + toFixedOrNa(m?.tabo, 2) + "°, " + toFixedOrNa(m?.d, 4) + "D)";
+          })
+          .join(", ");
+      }
+
+      function formatAstigmatismSummaryGroups(items) {
+        const groups = Array.isArray(items) ? items : [];
+        if (!groups.length) return "none";
+        return groups
+          .map(function (group, index) {
+            return "#" + (index + 1) + ": [" + formatAstigmatismMeridianArray(group) + "]";
+          })
+          .join(" | ");
+      }
+
       /** det([[a,b],[d,e]]) */
       function affineLinearDet(a, b, d, e) {
         return a * e - b * d;
@@ -1364,6 +1384,7 @@
         eyeRenderGroup.add(eyeGeometryGroup);
         addSimulationObject(eyeRenderGroup);
         const simulationResult = engine.simulate();
+        const astigmatismInfo = simulationResult?.info?.astigmatism || null;
         const prismInfo = simulationResult?.info?.prism
           ? {
               eye: simulationResult.info.prism.eye
@@ -1844,6 +1865,8 @@
         ", y=" + toFixedOrNa(prismInfo?.combined?.y, 4) +
         ", mag=" + toFixedOrNa(prismInfo?.combined?.magnitude, 4) +
         ", ang=" + toFixedOrNa(prismInfo?.combined?.angle_deg, 2) + "°\n" +
+        "astig eye: " + formatAstigmatismSummaryGroups(astigmatismInfo?.eye) + "\n" +
+        "astig combined: " + formatAstigmatismSummaryGroups(astigmatismInfo?.combined) + "\n" +
         "meshes: " + meshCount + "\n" +
         "vertices: " + vertexCount + "\n" +
         "triangles: " + triangleCount + "\n" +

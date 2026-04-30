@@ -68,6 +68,32 @@ describe("SCAXEngine", () => {
       expect(result).toHaveProperty("info");
       expect(result.info).toHaveProperty("astigmatism");
       expect(result.info).toHaveProperty("prism");
+      expect(Array.isArray(result.info.astigmatism.eye)).toBe(true);
+      expect(Array.isArray(result.info.astigmatism.combined)).toBe(true);
+      expect(Array.isArray(result.info.astigmatism.eye[0])).toBe(true);
+      expect(Array.isArray(result.info.astigmatism.combined[0])).toBe(true);
+    });
+
+    it("eye/combined 난시 요약에 양주경선 배열이 포함된다", () => {
+      const simulator = new SCAXEngine({
+        eye: { s: -1, c: -2, ax: 180 },
+        lens: [{
+          s: 0.5,
+          c: -1,
+          ax: 180,
+          position: { x: 0, y: 0, z: 12 },
+          tilt: { x: 0, y: 0 },
+        }],
+        light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
+      });
+      const result = simulator.simulate();
+      expect(result.info.astigmatism.eye.length).toBe(1);
+      expect(result.info.astigmatism.combined.length).toBe(1);
+      const [weak, strong] = result.info.astigmatism.combined[0];
+      expect(Number.isFinite(weak.d)).toBe(true);
+      expect(Number.isFinite(strong.d)).toBe(true);
+      expect(weak.d).toBeLessThanOrEqual(strong.d);
+      expect(strong.d - weak.d).toBeGreaterThan(0);
     });
 
     it("동공이 축동되면 추적 광선 수가 증가하지 않는다", () => {

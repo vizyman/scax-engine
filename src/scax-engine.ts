@@ -100,15 +100,7 @@ export type LightDeviation = {
   net_angle_deg: number;
 };
 
-export type AstigmatismSummaryItem = {
-  tabo_deg: number;
-  d: number | null;
-};
-
-export type LensAstigmatismSummaryItem = AstigmatismSummaryItem & {
-  name: string;
-  type: string;
-};
+export type AstigmatismSummaryItem = { tabo: number; d: number }[];
 
 export type PrismSummaryItem = {
   p_x: number;
@@ -119,9 +111,9 @@ export type PrismSummaryItem = {
 
 export type SimulationResultInfo = {
   astigmatism: {
-    eye: AstigmatismSummaryItem;
-    lens: LensAstigmatismSummaryItem[];
-    combined: AstigmatismSummaryItem;
+    eye: AstigmatismSummaryItem[];
+    lens: AstigmatismSummaryItem[];
+    combined: AstigmatismSummaryItem[];
   };
   prism: {
     eye: PrismSummaryItem;
@@ -138,7 +130,7 @@ export type AffineAnalysisResult = ReturnType<Affine["estimate"]>;
  * - 표면들을 순서대로 통과시키며 굴절을 계산한 뒤
  * - 망막 대응쌍, Sturm 분석, 왜곡(affine) 분석까지 제공합니다.
  */
-export default class SCAXEngine {
+export class SCAXEngineCore {
   private static readonly EYE_ROTATION_PIVOT_FROM_CORNEA_MM = 13;
   private eyeModel!: EyeModel;
   private surfaces!: Surface[]; // eye model surfaces
@@ -227,7 +219,7 @@ export default class SCAXEngine {
       "XYZ",
     ));
     this.eyeRotationQuaternionInverse = this.eyeRotationQuaternion.clone().invert();
-    this.eyeRotationPivot = new Vector3(0, 0, SCAXEngine.EYE_ROTATION_PIVOT_FROM_CORNEA_MM);
+    this.eyeRotationPivot = new Vector3(0, 0, SCAXEngineCore.EYE_ROTATION_PIVOT_FROM_CORNEA_MM);
     const normalizedLightSourcePose = this.normalizeLightSourcePose(light_source);
     this.lightSourcePosition = new Vector3(
       normalizedLightSourcePose.position.x,
@@ -373,19 +365,14 @@ export default class SCAXEngine {
   public simulate(): SimulateResult {
     const tracedRays = this.rayTracing();
     this.sturmCalculation(tracedRays);
-    const inducedAstigmatism = this.calculateInducedAstigmatism(this.eyePower, this.lensPowers);
     const lightDeviation = this.calculateLightDeviation();
     return {
       traced_rays: tracedRays,
       info: {
         astigmatism: {
-          eye: this.toAstigmatismSummaryItem(inducedAstigmatism.eye),
-          lens: this.lensPowers.map((power, index) => ({
-            ...this.toAstigmatismSummaryItem(this.calculateInducedAstigmatism({ s: 0, c: 0, ax: 0 }, [power]).lens),
-            name: this.readSurfaceName(this.lens[index]) ?? `lens_${index + 1}`,
-            type: this.readSurfaceType(this.lens[index]),
-          })),
-          combined: this.toAstigmatismSummaryItem(inducedAstigmatism.induced),
+          eye: [this.principalMeridiansFromPowers([this.eyePower])],
+          lens: this.lensPowers.map((power) => this.principalMeridiansFromPowers([power])),
+          combined: [this.principalMeridiansFromPowers([this.eyePower, ...this.lensPowers])],
         },
         prism: {
           eye: this.toPrismSummaryItem(lightDeviation.eye_prism_effect),
@@ -529,28 +516,8 @@ export default class SCAXEngine {
   ): InducedAstigmatismSummary {
     const lensList = Array.isArray(lens) ? lens : [lens];
     const toAstigmatism = (powers: SCAxPower[]): InducedAstigmatism | null => {
-      let j0 = 0;
-      let j45 = 0;
-
-      for (const power of powers) {
-        const cylinder = Number(power?.c ?? 0);
-        const axisTABO = Number(power?.ax ?? 0);
-        if (!Number.isFinite(cylinder) || !Number.isFinite(axisTABO) || Math.abs(cylinder) < 1e-12) continue;
-        const axisDeg = TABOToDeg(axisTABO);
-        const rad = (2 * axisDeg * Math.PI) / 180;
-        const scale = -cylinder / 2;
-        j0 += scale * Math.cos(rad);
-        j45 += scale * Math.sin(rad);
-      }
-
-      const d = 2 * Math.hypot(j0, j45);
-      if (!Number.isFinite(d) || d < 1e-9) return null;
-
-      const axisDeg = (((0.5 * Math.atan2(j45, j0) * 180) / Math.PI) % 180 + 180) % 180;
-      return {
-        d,
-        tabo_deg: DegToTABO(axisDeg),
-      };
+      const { j0, j45 } = this.aggregatePowerVector(powers);
+      return this.toInducedAstigmatism(j0, j45);
     };
 
     return {
@@ -600,6 +567,53 @@ export default class SCAXEngine {
     const rad = (2 * ax * Math.PI) / 180;
     const scale = -c / 2;
     return { j0: scale * Math.cos(rad), j45: scale * Math.sin(rad) };
+  }
+
+  private aggregatePowerVector(powers: SCAxPower[]) {
+    let m = 0;
+    let j0 = 0;
+    let j45 = 0;
+    for (const power of powers) {
+      const sphere = Number(power?.s ?? 0);
+      const cylinder = Number(power?.c ?? 0);
+      const axisTABO = Number(power?.ax ?? 0);
+      if (!Number.isFinite(sphere) || !Number.isFinite(cylinder) || !Number.isFinite(axisTABO)) continue;
+      const axisDeg = TABOToDeg(axisTABO);
+      const rad = (2 * axisDeg * Math.PI) / 180;
+      const halfMinusCylinder = -cylinder / 2;
+      m += sphere + (cylinder / 2);
+      j0 += halfMinusCylinder * Math.cos(rad);
+      j45 += halfMinusCylinder * Math.sin(rad);
+    }
+    return { m, j0, j45 };
+  }
+
+  private toInducedAstigmatism(j0: number, j45: number): InducedAstigmatism | null {
+    const d = 2 * Math.hypot(j0, j45);
+    if (!Number.isFinite(d) || d < 1e-9) return null;
+    const axisDeg = (((0.5 * Math.atan2(j45, j0) * 180) / Math.PI) % 180 + 180) % 180;
+    return {
+      d,
+      tabo_deg: DegToTABO(axisDeg),
+    };
+  }
+
+  private principalMeridiansFromVector(m: number, j0: number, j45: number): AstigmatismSummaryItem {
+    if (!Number.isFinite(m) || !Number.isFinite(j0) || !Number.isFinite(j45)) return [];
+    const axisDeg = (((0.5 * Math.atan2(j45, j0) * 180) / Math.PI) % 180 + 180) % 180;
+    const taboAxis = this.normalizeAngle360(DegToTABO(axisDeg));
+    const orthogonalTabo = this.normalizeAngle360(taboAxis + 90);
+    const r = Math.hypot(j0, j45);
+    const meridians = [
+      { tabo: taboAxis, d: m - r },
+      { tabo: orthogonalTabo, d: m + r },
+    ];
+    return meridians.sort((a, b) => a.d - b.d);
+  }
+
+  private principalMeridiansFromPowers(powers: SCAxPower[]): AstigmatismSummaryItem {
+    const { m, j0, j45 } = this.aggregatePowerVector(powers);
+    return this.principalMeridiansFromVector(m, j0, j45);
   }
 
   private normalizePrismAmount(value: unknown) {
@@ -660,18 +674,6 @@ export default class SCAXEngine {
       y: yy,
       magnitude,
       angle_deg: magnitude < 1e-12 ? 0 : angleDeg,
-    };
-  }
-
-  private toAstigmatismSummaryItem(value: InducedAstigmatism | null): AstigmatismSummaryItem {
-    const d = Number(value?.d);
-    const axis = Number(value?.tabo_deg);
-    if (!Number.isFinite(d) || d < 1e-9) {
-      return { tabo_deg: 0, d: null };
-    }
-    return {
-      tabo_deg: this.normalizeAngle360(axis),
-      d,
     };
   }
 
@@ -830,4 +832,80 @@ export default class SCAXEngine {
       .filter((pair): pair is AffinePair => Boolean(pair));
   }
 
+}
+
+/**
+ * 외부 공개 API 전용 Facade입니다.
+ * 내부 광학 상태/연산은 SCAXEngineCore에 위임합니다.
+ */
+export default class SCAXEngine {
+  private readonly core: SCAXEngineCore;
+
+  constructor(props: SCAXEngineProps = {}) {
+    this.core = new SCAXEngineCore(props);
+  }
+
+  // Test/debug bridge for legacy direct field mutation patterns.
+  public get lens() {
+    return (this.core as unknown as { lens: Surface[] }).lens;
+  }
+
+  public set lens(value: Surface[]) {
+    (this.core as unknown as { lens: Surface[] }).lens = value;
+  }
+
+  public get light_source() {
+    return (this.core as unknown as { light_source: LightSource }).light_source;
+  }
+
+  public set light_source(value: LightSource) {
+    (this.core as unknown as { light_source: LightSource }).light_source = value;
+  }
+
+  public get surfaces() {
+    return (this.core as unknown as { surfaces: Surface[] }).surfaces;
+  }
+
+  public set surfaces(value: Surface[]) {
+    (this.core as unknown as { surfaces: Surface[] }).surfaces = value;
+  }
+
+  public update(props: SCAXEngineProps = {}) {
+    this.core.update(props);
+  }
+
+  public simulate(): SimulateResult {
+    return this.core.simulate();
+  }
+
+  public getEyeRotation(): EyeRotationForRender {
+    return this.core.getEyeRotation();
+  }
+
+  public rayTracing(): Ray[] {
+    return this.core.rayTracing();
+  }
+
+  public sturmCalculation(rays?: Ray[]) {
+    return this.core.sturmCalculation(rays);
+  }
+
+  public estimateAffineDistortion(pairs: AffinePair[]) {
+    return this.core.estimateAffineDistortion(pairs);
+  }
+
+  public affine2d(pairs: AffinePair[]) {
+    return this.core.affine2d(pairs);
+  }
+
+  public getAffineAnalysis(): AffineAnalysisResult {
+    return this.core.getAffineAnalysis();
+  }
+
+  public calculateInducedAstigmatism(
+    eye: SCAxPower,
+    lens: SCAxPower | SCAxPower[],
+  ): InducedAstigmatismSummary {
+    return this.core.calculateInducedAstigmatism(eye, lens);
+  }
 }
