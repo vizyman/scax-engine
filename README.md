@@ -2,6 +2,8 @@
 
 눈 모델(Gullstrand / Navarro)에 대한 광선 추적, Sturm 간격 분석, 아핀 왜곡 추정, 유발 난시·프리즘 편위 계산을 제공하는 TypeScript 안경광학 시뮬레이션(단안 기준, OD) 라이브러리입니다. ESM, CJS, UMD 빌드를 지원합니다.
 
+**SCAX**는 안경광학에서 기본적으로 쓰이는 데이터입니다. **s**는 구면렌즈 도수, **c**는 원주렌즈 도수, **ax**는 원주렌즈의 축입니다.
+
 English documentation: [README-en.md](README-en.md)
 
 ## 요구 사항
