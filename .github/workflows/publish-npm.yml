@@ -1,0 +1,32 @@
+# Publishes to npm using repo secret NPM_TOKEN (see project .npmrc).
+name: Publish to npm
+
+on:
+  # GitHub에서 Release를 publish 할 때 자동 실행
+  release:
+    types: [published]
+  # Actions 탭에서 수동 실행 (버전 올린 뒤 main에 반영된 상태에서 실행)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Release면 릴리스 태그 기준, 수동 실행이면 선택한 브랜치 커밋
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm publish
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
