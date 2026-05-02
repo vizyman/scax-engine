@@ -1,10 +1,13 @@
 # scax-engine
 
-TypeScript ophthalmic-optics simulation library for a model eye (Gullstrand / Navarro, monocular OD baseline): ray tracing, Sturm interval analysis, affine distortion estimation, and induced astigmatism / prism deviation. Ships ESM, CJS, and UMD builds.
+A TypeScript ophthalmic optics simulation library (monocular, OD baseline) that provides ray tracing for eye models (Gullstrand / Navarro), Sturm interval analysis, affine distortion estimation, and induced astigmatism / prism deviation calculations. Supports ESM, CJS, and UMD builds.
 
-**SCAX** is the conventional prescription/lens notation in ophthalmic optics: **s** is spherical power, **c** is cylindrical power, and **ax** is the cylinder axis (in degrees).
 
 Korean documentation: [README.md](README.md)
+
+## What is SCAX?
+
+SCAX is the conventional data format used in ophthalmic optics. **S** is spherical lens power, **C** is cylindrical lens power, and **AX** is the axis of the cylindrical lens.
 
 ## Requirements
 
