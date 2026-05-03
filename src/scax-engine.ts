@@ -556,11 +556,18 @@ export class SCAXEngineCore {
     return { m, j0, j45 };
   }
 
+  /** 난시 주경선 TABO 각도: 180° 동치이므로 표시·비교는 항상 [0, 180)으로 맞춘다. */
+  private normalizeTaboMeridian180(value: unknown) {
+    const d = Number(value ?? 0);
+    if (!Number.isFinite(d)) return 0;
+    return ((d % 180) + 180) % 180;
+  }
+
   private principalMeridiansFromVector(m: number, j0: number, j45: number): AstigmatismSummaryItem {
     if (!Number.isFinite(m) || !Number.isFinite(j0) || !Number.isFinite(j45)) return [];
     const axisDeg = (((0.5 * Math.atan2(j45, j0) * 180) / Math.PI) % 180 + 180) % 180;
-    const taboAxis = this.normalizeAngle360(DegToTABO(axisDeg));
-    const orthogonalTabo = this.normalizeAngle360(taboAxis + 90);
+    const taboAxis = this.normalizeTaboMeridian180(DegToTABO(axisDeg));
+    const orthogonalTabo = (taboAxis + 90) % 180;
     const r = Math.hypot(j0, j45);
     const meridians = [
       { tabo: taboAxis, d: m - r },

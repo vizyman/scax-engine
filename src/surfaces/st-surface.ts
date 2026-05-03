@@ -12,6 +12,7 @@ import {
   ST_POWER_EPS_D,
 } from "../parameters/constants";
 import Ray from "../ray/ray";
+import TABOToDeg from "../utils/tabo-to-deg";
 import SphericalSurface, { SphericalSurfaceProps } from "./spherical-surface";
 import Surface from "./surface";
 import ToricSurface, { ToricSurfaceProps } from "./toric-surface";
@@ -23,6 +24,7 @@ export type STSurfaceProps = {
   r?: number;
   s: number;
   c: number;
+  /** 실린더 축, TABO(°). 내부 저장은 TABOToDeg 변환 후 각도이다. */
   ax: number;
   n_before: RefractiveIndexSpec;
   n: RefractiveIndexSpec;
@@ -62,7 +64,8 @@ export default class STSurface extends Surface {
 
     this.s = s;
     this.c = c;
-    this.ax = ax;
+    // paraxial-surface와 동일: 처방 축은 TABO(°), 굴절/기하에는 수학 좌표 각(0~180)로 변환해 저장한다.
+    this.ax = TABOToDeg(ax);
     this.n_before = normalizeRefractiveIndexSpec(n_before);
     this.n = normalizeRefractiveIndexSpec(n);
     this.n_after = normalizeRefractiveIndexSpec(n_after);

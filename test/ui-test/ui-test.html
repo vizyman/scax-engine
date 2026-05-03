@@ -1329,6 +1329,7 @@
         eyeRenderGroup.add(eyeGeometryGroup);
         addSimulationObject(eyeRenderGroup);
         const simulationResult = engine.simulate();
+        console.log("SIMULATION RESULT : ", simulationResult);
         const astigmatismInfo = simulationResult?.info?.astigmatism || null;
         const prismInfo = simulationResult?.info?.prism
           ? {
@@ -1418,6 +1419,7 @@
         const affineResultEyeOnly = eyePrismEngine.getAffineAnalysis();
         const affineDistortionMetrics = computeAffineDistortionMetrics(affineResult, affineResultOrtho);
         const sturmResult = engine.sturmCalculation(tracedRays);
+        console.log("STURM RESULT : ", sturmResult);
         const sturmInfo = Array.isArray(sturmResult?.sturm_info) ? sturmResult.sturm_info : [];
         const sourceRays = engine?.light_source?.emitRays ? engine.light_source.emitRays() : [];
 
