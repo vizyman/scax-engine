@@ -210,6 +210,26 @@
       const CROSS_CYL_MERIDIAN_MINUS_D = -0.25;
       const SPECTACLE_VD_Z_MM = -18;
       const EYE_ROTATION_PIVOT_FROM_CORNEA_MM = 13;
+      /** 시뮬레이션 `PUPIL_SIZE`(mm 직경)과 동일 — 표면 인스턴스에서 반경을 읽지 못할 때 시각화용 */
+      const PUPIL_DIAMETER_MM = {
+        constricted: 2.5,
+        neutral: 4,
+        dilated: 6,
+        none: 0,
+      };
+
+      function isPupilStopSurface(surface) {
+        return String(surface?.type || "").toLowerCase() === "aperture_stop"
+          || String(surface?.name || "").toLowerCase() === "pupil_stop";
+      }
+
+      function entrancePupilRadiusMm(surface) {
+        if (!isPupilStopSurface(surface)) return null;
+        const direct = Number(surface?.radius);
+        if (Number.isFinite(direct) && direct > 0) return direct;
+        const dia = Number(PUPIL_DIAMETER_MM[uiState.pupilType]);
+        return Number.isFinite(dia) && dia > 0 ? dia / 2 : null;
+      }
 
       const uiState = {
         eyeModel: (searchParams.get("eyeModel") === "gullstrand" ? "gullstrand" : "navarro"),
@@ -218,6 +238,8 @@
           if (value === "constricted" || value === "dilated" || value === "none") return value;
           return "neutral";
         })(),
+        showPupilDisk: toBooleanParam("pupilDisk", true),
+        pupilDiskOpacity: toNumberParam("pupilDiskOp", 0.55),
         eyeS: toNumberParam("eyeS", 0.0),
         eyeC: toNumberParam("eyeC", 0.0),
         eyeAx: toNumberParam("eyeAx", 180),
@@ -353,6 +375,8 @@
         const params = new URLSearchParams();
         params.set("eyeModel", String(uiState.eyeModel));
         params.set("pupilType", String(uiState.pupilType));
+        params.set("pupilDisk", String(uiState.showPupilDisk));
+        params.set("pupilDiskOp", String(uiState.pupilDiskOpacity));
         params.set("eyeS", String(uiState.eyeS));
         params.set("eyeC", String(uiState.eyeC));
         params.set("eyeAx", String(uiState.eyeAx));
@@ -518,6 +542,14 @@
         .add(uiState, "pupilType", ["constricted", "neutral", "dilated", "none"])
         .name("Pupil Type")
         .onFinishChange(requestSimulationRefresh);
+      modelFolder
+        .add(uiState, "showPupilDisk")
+        .name("Show pupil disk")
+        .onFinishChange(requestSimulationRefresh);
+      modelFolder
+        .add(uiState, "pupilDiskOpacity", 0.05, 1, 0.02)
+        .name("Pupil disk opacity")
+        .onFinishChange(requestSimulationRefresh);
       modelFolder.open();
 
       const eyeFolder = gui.addFolder("2) Eye Refraction (S/C/Ax + Prism)");
@@ -637,6 +669,10 @@
         if (name.includes("lens")) return 4.8;
         if (name.includes("eye_st")) return 5.8;
         if (type === "toric") return 4.8;
+        if (isPupilStopSurface(surface)) {
+          const r = entrancePupilRadiusMm(surface);
+          if (Number.isFinite(r) && r > 0) return r;
+        }
         return 5.2;
       }
 
@@ -722,6 +758,15 @@
             const world = localPointToWorld(surface, new THREE.Vector3(x, y, sag));
             return [world.x, world.y, world.z];
           }, safeRadius, radialSegments, angularSegments);
+        }
+
+        if (String(type).toLowerCase() === "aperture_stop") {
+          const r = entrancePupilRadiusMm(surface);
+          if (!Number.isFinite(r) || r <= 0) return null;
+          return buildDiskMeshData(function (x, y) {
+            const world = localPointToWorld(surface, new THREE.Vector3(x, y, 0));
+            return [world.x, world.y, world.z];
+          }, r, radialSegments, angularSegments);
         }
 
         return null;
@@ -1431,6 +1476,7 @@
 
         surfaces.forEach(function (surface, index) {
           if (!surface) return;
+          if (isPupilStopSurface(surface) && !uiState.showPupilDisk) return;
           if (String(surface.type || "").toLowerCase() === "compound") {
             const toric = surface.toricSurface || null;
             const spherical = surface.sphericalSurface || null;
@@ -1458,12 +1504,16 @@
             geometry.setIndex(new THREE.BufferAttribute(buffer.indices, 1));
             geometry.computeVertexNormals();
 
+            const isPupilDisk = isPupilStopSurface(surface);
+            const diskOpacity = Math.min(1, Math.max(0.02, Number(uiState.pupilDiskOpacity) || 0.55));
             const material = new THREE.MeshStandardMaterial({
-              color: new THREE.Color().setHSL(((index + offset * 0.3) * 0.17) % 1, 0.65, 0.55),
+              color: isPupilDisk
+                ? new THREE.Color(0xc084fc)
+                : new THREE.Color().setHSL(((index + offset * 0.3) * 0.17) % 1, 0.65, 0.55),
               metalness: 0.05,
               roughness: 0.7,
               transparent: true,
-              opacity: 0.45,
+              opacity: isPupilDisk ? diskOpacity : 0.45,
               depthWrite: false,
               side: THREE.DoubleSide,
             });
@@ -1780,6 +1830,7 @@
         "global: window.ScaxEngine.SCAXEngine\n" +
         "config: model=" + uiState.eyeModel +
         ", pupil=" + uiState.pupilType +
+        ", pupilDisk=" + (uiState.showPupilDisk ? "show" : "hide") +
         ", eye=(" + uiState.eyeS + "," + uiState.eyeC + "," + uiState.eyeAx + ")" +
         ", eyePrismBase=(" + uiState.eyeP + "Δ@" + uiState.eyePAx + "°)" +
         ", eyeTilt=(" + uiState.eyeTiltX + "°, " + uiState.eyeTiltY + "°)" +
