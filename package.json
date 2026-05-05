@@ -1,6 +1,6 @@
 {
   "name": "scax-engine",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Optical calculation engine for an eye model, with ESM, CJS, and UMD builds.",
   "main": "./dist/scax-engine.cjs",
   "module": "./dist/scax-engine.js",

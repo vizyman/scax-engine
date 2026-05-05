@@ -1,4 +1,5 @@
 import { EyeModelParameter, EyeModelParameterConfig } from "./eyemodel-parameter";
+import { FRAUNHOFER_REFRACTIVE_INDICES } from "../constants";
 
 export class NavarroParameter extends EyeModelParameter {
   static parameter: EyeModelParameterConfig = {
@@ -11,8 +12,8 @@ export class NavarroParameter extends EyeModelParameter {
         z: 0.0,
         radius: 7.72,
         conic: -0.26,
-        n_before: 1.0,
-        n_after: 1.376,
+        n_before: FRAUNHOFER_REFRACTIVE_INDICES.air,
+        n_after: FRAUNHOFER_REFRACTIVE_INDICES.cornea,
       },
       {
         type: "aspherical",
@@ -20,8 +21,8 @@ export class NavarroParameter extends EyeModelParameter {
         z: 0.55,
         radius: 6.5,
         conic: 0.0,
-        n_before: 1.376,
-        n_after: 1.336,
+        n_before: FRAUNHOFER_REFRACTIVE_INDICES.cornea,
+        n_after: FRAUNHOFER_REFRACTIVE_INDICES.aqueous,
       },
       {
         type: "aspherical",
@@ -29,8 +30,8 @@ export class NavarroParameter extends EyeModelParameter {
         z: 0.55 + 3.05,
         radius: 10.2,
         conic: -3.13,
-        n_before: 1.336,
-        n_after: 1.42,
+        n_before: FRAUNHOFER_REFRACTIVE_INDICES.aqueous,
+        n_after: FRAUNHOFER_REFRACTIVE_INDICES.lens_navarro,
       },
       {
         type: "aspherical",
@@ -38,8 +39,8 @@ export class NavarroParameter extends EyeModelParameter {
         z: 0.55 + 3.05 + 4.0,
         radius: -6.0,
         conic: -1.0,
-        n_before: 1.42,
-        n_after: 1.336,
+        n_before: FRAUNHOFER_REFRACTIVE_INDICES.lens_navarro,
+        n_after: FRAUNHOFER_REFRACTIVE_INDICES.vitreous,
       },
       {
         type: "spherical-image",

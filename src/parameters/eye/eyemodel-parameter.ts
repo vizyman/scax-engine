@@ -1,4 +1,5 @@
 import AsphericalSurface from "../../surfaces/aspherical-surface";
+import { RefractiveIndexSpec } from "../../optics/refractive-index";
 import SphericalImageSurface from "../../surfaces/spherical-image";
 import SphericalSurface from "../../surfaces/spherical-surface";
 import Surface from "../../surfaces/surface";
@@ -11,16 +12,16 @@ interface BaseEyeSurfaceParameter {
 interface SphericalEyeSurfaceParameter extends BaseEyeSurfaceParameter {
   type: "spherical";
   radius: number;
-  n_before: number;
-  n_after: number;
+  n_before: RefractiveIndexSpec;
+  n_after: RefractiveIndexSpec;
 }
 
 interface AsphericalEyeSurfaceParameter extends BaseEyeSurfaceParameter {
   type: "aspherical";
   radius: number;
   conic: number;
-  n_before: number;
-  n_after: number;
+  n_before: RefractiveIndexSpec;
+  n_after: RefractiveIndexSpec;
 }
 
 interface SphericalImageEyeSurfaceParameter extends BaseEyeSurfaceParameter {

@@ -81,6 +81,13 @@ export const FRAUNHOFER_REFRACTIVE_INDICES = {
     d: 1.406,
     C: 1.405318,
   },
+  // Navarro 수정체 중심 굴절률(d=1.42)용 분산 스펙
+  lens_navarro: {
+    F: 1.421585,
+    e: 1.420542,
+    d: 1.420,
+    C: 1.419318,
+  },
   lens_anterior: {
     F: 1.387507,
     e: 1.386516,
