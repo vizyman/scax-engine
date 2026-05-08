@@ -283,7 +283,20 @@
         spectacleTiltY: toNumberParam("specTiltY", 0),
         crossCylinderEnabled: toBooleanParam("xcylOn", false),
         crossCylinderAx: toNumberParam("xcylAx", 180),
+        showReflectedRays: toBooleanParam("showRef", true),
       };
+      const motionDebugState = {
+        prevLightPosX: null,
+        prevCentroid: null,
+      };
+      // Cornea-front viewer convention:
+      // in this scene, viewer-right corresponds to negative world/local X.
+      const VIEWER_RIGHT_IS_NEGATIVE_X = true;
+      function toViewerX(x) {
+        const xx = Number(x);
+        if (!Number.isFinite(xx)) return NaN;
+        return VIEWER_RIGHT_IS_NEGATIVE_X ? -xx : xx;
+      }
 
       function buildLensConfigs(state) {
         const lens = [];
@@ -416,6 +429,7 @@
         params.set("specTiltY", String(uiState.spectacleTiltY));
         params.set("xcylOn", String(uiState.crossCylinderEnabled));
         params.set("xcylAx", String(uiState.crossCylinderAx));
+        params.set("showRef", String(uiState.showReflectedRays));
         const nextUrl = window.location.pathname + "?" + params.toString();
         window.history.replaceState(null, "", nextUrl);
       }
@@ -601,6 +615,12 @@
       const xcylFolder = gui.addFolder("5) Cross Cylinder (+0.25 / −0.25 D, axis adjustable)");
       xcylFolder.add(uiState, "crossCylinderEnabled").name("Insert Cross Cyl").onFinishChange(requestSimulationRefresh);
       xcylFolder.add(uiState, "crossCylinderAx", 0, 180, 1).name("X-Cyl Axis (TABO °)").onFinishChange(requestSimulationRefresh);
+
+      const viewFolder = gui.addFolder("6) View");
+      viewFolder
+        .add(uiState, "showReflectedRays")
+        .name("Show reflected rays")
+        .onFinishChange(requestSimulationRefresh);
 
       function buildDiskMeshData(pointAt, radius, radialSegments, angularSegments) {
         const positions = [];
@@ -1026,6 +1046,182 @@
         return base;
       }
 
+      function solveLinear3x3(matrix, rhs) {
+        const a = matrix.map(function (row) { return row.slice(); });
+        const b = rhs.slice();
+        for (let col = 0; col < 3; col += 1) {
+          let pivot = col;
+          for (let r = col + 1; r < 3; r += 1) {
+            if (Math.abs(a[r][col]) > Math.abs(a[pivot][col])) pivot = r;
+          }
+          if (Math.abs(a[pivot][col]) < 1e-12) return null;
+          if (pivot !== col) {
+            const tmpRow = a[col]; a[col] = a[pivot]; a[pivot] = tmpRow;
+            const tmpVal = b[col]; b[col] = b[pivot]; b[pivot] = tmpVal;
+          }
+          const inv = 1 / a[col][col];
+          for (let j = col; j < 3; j += 1) a[col][j] *= inv;
+          b[col] *= inv;
+          for (let r = 0; r < 3; r += 1) {
+            if (r === col) continue;
+            const factor = a[r][col];
+            for (let j = col; j < 3; j += 1) a[r][j] -= factor * a[col][j];
+            b[r] -= factor * b[col];
+          }
+        }
+        return b;
+      }
+
+      function estimateAffineFromPairs(pairs) {
+        const validPairs = (Array.isArray(pairs) ? pairs : []).filter(function (p) {
+          return Number.isFinite(p?.sx) && Number.isFinite(p?.sy)
+            && Number.isFinite(p?.tx) && Number.isFinite(p?.ty);
+        });
+        if (validPairs.length < 4) return null;
+        let sxx = 0; let sxy = 0; let sx1 = 0;
+        let syy = 0; let sy1 = 0; let n = 0;
+        let stx = 0; let sty = 0; let txx = 0;
+        let tty = 0; let txy = 0;
+        validPairs.forEach(function (p) {
+          const x = Number(p.sx);
+          const y = Number(p.sy);
+          const tx = Number(p.tx);
+          const ty = Number(p.ty);
+          sxx += x * x; sxy += x * y; sx1 += x;
+          syy += y * y; sy1 += y; n += 1;
+          stx += x * tx; sty += y * tx; txx += tx;
+          tty += x * ty; txy += y * ty;
+        });
+        const m = [
+          [sxx, sxy, sx1],
+          [sxy, syy, sy1],
+          [sx1, sy1, n],
+        ];
+        const xSol = solveLinear3x3(m, [stx, sty, txx]);
+        const ySol = solveLinear3x3(m, [tty, txy, validPairs.reduce(function (acc, p) { return acc + Number(p.ty); }, 0)]);
+        if (!xSol || !ySol) return null;
+        const affine = {
+          a: xSol[0], b: xSol[1], c: xSol[2],
+          d: ySol[0], e: ySol[1], f: ySol[2],
+          count: n,
+          residualAvgPct: 0,
+          residualMaxPct: 0,
+          residuals: [],
+        };
+        let sumPct = 0;
+        let maxPct = 0;
+        validPairs.forEach(function (p) {
+          const predX = affine.a * p.sx + affine.b * p.sy + affine.c;
+          const predY = affine.d * p.sx + affine.e * p.sy + affine.f;
+          const err = Math.hypot(predX - p.tx, predY - p.ty);
+          const base = Math.max(1e-9, Math.hypot(p.tx, p.ty));
+          const pct = (err / base) * 100;
+          sumPct += pct;
+          maxPct = Math.max(maxPct, pct);
+          affine.residuals.push({ magnitude: err, pct });
+        });
+        affine.residualAvgPct = sumPct / Math.max(1, n);
+        affine.residualMaxPct = maxPct;
+        return affine;
+      }
+
+      function buildObserverReflexAnalysis(reflectedRays, pupilStopSurface) {
+        if (!pupilStopSurface) return { pairs: [], affine: null, pupilHits: [] };
+        const pos = pupilStopSurface.position || { x: 0, y: 0, z: 0 };
+        const planePoint = new THREE.Vector3(Number(pos.x) || 0, Number(pos.y) || 0, Number(pos.z) || 0);
+        const q = getSurfaceQuaternion(pupilStopSurface);
+        const qInv = q.clone().invert();
+        const planeNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(q).normalize();
+        const pupilRadius = Number(pupilStopSurface?.radius);
+        if (!Number.isFinite(pupilRadius) || pupilRadius <= 0) {
+          return { pairs: [], affine: null, pupilHits: [] };
+        }
+        const pairs = [];
+        const pupilHits = [];
+        (Array.isArray(reflectedRays) ? reflectedRays : []).forEach(function (ray) {
+          if (!ray?.endPoint || !ray?.getDirection) return;
+          const points = getRayPoints(ray);
+          if (!Array.isArray(points) || points.length < 1) return;
+          const src = points[0];
+          const origin = ray.endPoint();
+          const dir = ray.getDirection();
+          if (!src || !origin || !dir) return;
+          const denom = dir.dot(planeNormal);
+          if (!Number.isFinite(denom) || Math.abs(denom) < 1e-12) return;
+          const t = planePoint.clone().sub(origin).dot(planeNormal) / denom;
+          if (!Number.isFinite(t) || t <= 0) return;
+          const hit = origin.clone().addScaledVector(dir, t);
+          const local = hit.clone().sub(planePoint).applyQuaternion(qInv);
+          if (!Number.isFinite(local.x) || !Number.isFinite(local.y)) return;
+          if ((local.x * local.x + local.y * local.y) > (pupilRadius * pupilRadius)) return;
+          pairs.push({ sx: Number(src.x), sy: Number(src.y), tx: local.x, ty: local.y });
+          pupilHits.push({ x: local.x, y: local.y });
+        });
+        return {
+          pairs,
+          affine: estimateAffineFromPairs(pairs),
+          pupilHits,
+        };
+      }
+
+      function clipPolylineByZRange(points, zMin, zMax) {
+        if (!Array.isArray(points) || points.length < 2) return [];
+        if (!Number.isFinite(zMin) || !Number.isFinite(zMax) || zMax < zMin) return [];
+        const output = [];
+        function inside(p) {
+          return Number.isFinite(p?.z) && p.z >= zMin && p.z <= zMax;
+        }
+        function intersectAtZ(a, b, zPlane) {
+          const dz = b.z - a.z;
+          if (!Number.isFinite(dz) || Math.abs(dz) < 1e-12) return null;
+          const t = (zPlane - a.z) / dz;
+          if (!Number.isFinite(t) || t < 0 || t > 1) return null;
+          return new THREE.Vector3(
+            a.x + (b.x - a.x) * t,
+            a.y + (b.y - a.y) * t,
+            zPlane,
+          );
+        }
+        for (let i = 0; i < points.length - 1; i += 1) {
+          const a = points[i];
+          const b = points[i + 1];
+          if (!a || !b) continue;
+          const inA = inside(a);
+          const inB = inside(b);
+          const enter = (!inA && inB);
+          const exit = (inA && !inB);
+          const cross = (!inA && !inB && ((a.z < zMin && b.z > zMax) || (a.z > zMax && b.z < zMin)));
+          if (inA && output.length === 0) output.push(a.clone());
+          if (enter) {
+            const atMin = intersectAtZ(a, b, zMin);
+            const atMax = intersectAtZ(a, b, zMax);
+            const p = atMin || atMax;
+            if (p) output.push(p);
+            output.push(b.clone());
+            continue;
+          }
+          if (inA && inB) {
+            output.push(b.clone());
+            continue;
+          }
+          if (exit) {
+            const atMin = intersectAtZ(a, b, zMin);
+            const atMax = intersectAtZ(a, b, zMax);
+            const p = atMin || atMax;
+            if (p) output.push(p);
+            continue;
+          }
+          if (cross) {
+            const p1 = intersectAtZ(a, b, zMin);
+            const p2 = intersectAtZ(a, b, zMax);
+            if (p1 && p2) {
+              output.push(p1, p2);
+            }
+          }
+        }
+        return output;
+      }
+
       function drawAffineDistortionHint(canvasCtx, plotLeft, yBase, metrics) {
         canvasCtx.save();
         canvasCtx.font = "10px Arial";
@@ -1155,40 +1351,68 @@
           canvasCtx.lineTo(axisY1.x, axisY1.y);
           canvasCtx.stroke();
 
-          canvasCtx.strokeStyle = "#334155";
-          for (let i = -3; i <= 3; i += 1) {
-            const x0 = toCanvas(i * gridStep, -gridExtent);
-            const x1 = toCanvas(i * gridStep, gridExtent);
-            const y0 = toCanvas(-gridExtent, i * gridStep);
-            const y1 = toCanvas(gridExtent, i * gridStep);
-            canvasCtx.beginPath();
-            canvasCtx.moveTo(x0.x, x0.y);
-            canvasCtx.lineTo(x1.x, x1.y);
-            canvasCtx.stroke();
-            canvasCtx.beginPath();
-            canvasCtx.moveTo(y0.x, y0.y);
-            canvasCtx.lineTo(y1.x, y1.y);
-            canvasCtx.stroke();
+          if (!panel?.scatterOnly) {
+            canvasCtx.strokeStyle = "#334155";
+            for (let i = -3; i <= 3; i += 1) {
+              const x0 = toCanvas(i * gridStep, -gridExtent);
+              const x1 = toCanvas(i * gridStep, gridExtent);
+              const y0 = toCanvas(-gridExtent, i * gridStep);
+              const y1 = toCanvas(gridExtent, i * gridStep);
+              canvasCtx.beginPath();
+              canvasCtx.moveTo(x0.x, x0.y);
+              canvasCtx.lineTo(x1.x, x1.y);
+              canvasCtx.stroke();
+              canvasCtx.beginPath();
+              canvasCtx.moveTo(y0.x, y0.y);
+              canvasCtx.lineTo(y1.x, y1.y);
+              canvasCtx.stroke();
+            }
+
+            canvasCtx.strokeStyle = sourceColor;
+            canvasCtx.lineWidth = 1.1;
+            for (let i = -3; i <= 3; i += 1) {
+              const x0 = toCanvas(i * gridStep, -gridExtent);
+              const x1 = toCanvas(i * gridStep, gridExtent);
+              const y0 = toCanvas(-gridExtent, i * gridStep);
+              const y1 = toCanvas(gridExtent, i * gridStep);
+              canvasCtx.beginPath();
+              canvasCtx.moveTo(x0.x, x0.y);
+              canvasCtx.lineTo(x1.x, x1.y);
+              canvasCtx.stroke();
+              canvasCtx.beginPath();
+              canvasCtx.moveTo(y0.x, y0.y);
+              canvasCtx.lineTo(y1.x, y1.y);
+              canvasCtx.stroke();
+            }
           }
 
-          canvasCtx.strokeStyle = sourceColor;
-          canvasCtx.lineWidth = 1.1;
-          for (let i = -3; i <= 3; i += 1) {
-            const x0 = toCanvas(i * gridStep, -gridExtent);
-            const x1 = toCanvas(i * gridStep, gridExtent);
-            const y0 = toCanvas(-gridExtent, i * gridStep);
-            const y1 = toCanvas(gridExtent, i * gridStep);
-            canvasCtx.beginPath();
-            canvasCtx.moveTo(x0.x, x0.y);
-            canvasCtx.lineTo(x1.x, x1.y);
-            canvasCtx.stroke();
-            canvasCtx.beginPath();
-            canvasCtx.moveTo(y0.x, y0.y);
-            canvasCtx.lineTo(y1.x, y1.y);
-            canvasCtx.stroke();
-          }
-
-          if (panel?.affine) {
+          if (panel?.scatterOnly) {
+            const pupilRadius = Number(panel?.pupilRadiusMm);
+            if (Number.isFinite(pupilRadius) && pupilRadius > 0) {
+              canvasCtx.save();
+              canvasCtx.strokeStyle = "#60a5fa";
+              canvasCtx.lineWidth = 1.3;
+              const c = toCanvas(0, 0);
+              canvasCtx.beginPath();
+              canvasCtx.arc(c.x, c.y, pupilRadius * scale, 0, 2 * Math.PI);
+              canvasCtx.stroke();
+              canvasCtx.restore();
+            }
+            const points = Array.isArray(panel?.points) ? panel.points : [];
+            canvasCtx.save();
+            canvasCtx.fillStyle = imageColor;
+            canvasCtx.globalAlpha = 0.9;
+            points.forEach(function (p) {
+              const x = Number(p?.x);
+              const y = Number(p?.y);
+              if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+              const c = toCanvas(toViewerX(x), y);
+              canvasCtx.beginPath();
+              canvasCtx.arc(c.x, c.y, 1.6, 0, 2 * Math.PI);
+              canvasCtx.fill();
+            });
+            canvasCtx.restore();
+          } else if (panel?.affine) {
             canvasCtx.save();
             canvasCtx.beginPath();
             canvasCtx.rect(plotLeft, plotTop, plotWidth, plotHeight);
@@ -1213,6 +1437,9 @@
           canvasCtx.font = "10px Arial";
           if (panel?.showSourceOnly) {
             canvasCtx.fillText("광원 기준 격자", left + 8, panelH + top - 8);
+          } else if (panel?.scatterOnly) {
+            const count = Array.isArray(panel?.points) ? panel.points.length : 0;
+            canvasCtx.fillText("pupil hits: " + count, left + 8, panelH + top - 8);
           } else {
             const pairCount = Number(panel?.affine?.count);
             canvasCtx.fillText("pairs: " + (Number.isFinite(pairCount) ? pairCount : 0), left + 8, panelH + top - 8);
@@ -1424,6 +1651,14 @@
         const surfaces = []
           .concat(engine.lens || [])
           .concat(engine.surfaces || []);
+        const corneaAnteriorSurface = (engine.surfaces || []).find(function (surface) {
+          return String(surface?.name || "").toLowerCase() === "cornea_anterior";
+        });
+        const corneaPosteriorSurface = (engine.surfaces || []).find(function (surface) {
+          return String(surface?.name || "").toLowerCase() === "cornea_posterior";
+        });
+        const corneaAnteriorZ = Number(corneaAnteriorSurface?.position?.z);
+        const corneaPosteriorZ = Number(corneaPosteriorSurface?.position?.z);
         const eyeSurfaceSet = new Set((engine.surfaces || []).filter(Boolean));
         const eyeRenderGroup = new THREE.Group();
         eyeRenderGroup.name = "eye-render-group";
@@ -1473,6 +1708,9 @@
             : null);
         const tracedRays = Array.isArray(simulationResult?.traced_rays)
           ? simulationResult.traced_rays
+          : [];
+        const reflectedRays = uiState.showReflectedRays
+          ? (Array.isArray(engine.traceReflectedRays?.()) ? engine.traceReflectedRays() : [])
           : [];
         const affinePairCount = tracedRays
           .map(function (ray) {
@@ -1624,6 +1862,9 @@
 
         let rayCount = 0;
         let raySegmentCount = 0;
+        let reflectedRayCount = 0;
+        let reflectedRaySegmentCount = 0;
+        let reflectedCorneaExitRenderedCount = 0;
         let sourcePointCount = 0;
         let sourceDirectionArrowCount = 0;
 
@@ -1684,6 +1925,59 @@
             sourceDirectionArrowCount = 1;
           }
         }
+        const pupilStopSurface = (engine.surfaces || []).find(function (surface) {
+          return String(surface?.name || "").toLowerCase() === "pupil_stop";
+        }) || null;
+        const observerReflex = buildObserverReflexAnalysis(reflectedRays, pupilStopSurface);
+        const pupilRadiusMm = (() => {
+          const direct = Number(pupilStopSurface?.radius);
+          if (Number.isFinite(direct) && direct > 0) return direct;
+          const dia = Number(PUPIL_DIAMETER_MM[uiState.pupilType]);
+          return Number.isFinite(dia) && dia > 0 ? dia / 2 : 0;
+        })();
+        const observerPupilHits = Array.isArray(observerReflex?.pupilHits) ? observerReflex.pupilHits : [];
+        const observerCentroid = (function () {
+          if (!Array.isArray(observerPupilHits) || observerPupilHits.length <= 0) return null;
+          let sx = 0;
+          let sy = 0;
+          observerPupilHits.forEach(function (p) {
+            sx += Number(p?.x) || 0;
+            sy += Number(p?.y) || 0;
+          });
+          return {
+            x: sx / observerPupilHits.length,
+            y: sy / observerPupilHits.length,
+          };
+        })();
+        const currentLightPosX = Number(uiState.lightPosX);
+        const prevLightPosX = motionDebugState.prevLightPosX;
+        const prevCentroid = motionDebugState.prevCentroid;
+        let motionSweepDx = null;
+        let motionCentroidDx = null;
+        let motionDebugLabel = "insufficient-data";
+        if (
+          Number.isFinite(currentLightPosX)
+          && Number.isFinite(prevLightPosX)
+          && observerCentroid
+          && prevCentroid
+          && Number.isFinite(prevCentroid.x)
+        ) {
+          const rawSweepDx = currentLightPosX - prevLightPosX;
+          const rawCentroidDx = observerCentroid.x - prevCentroid.x;
+          motionSweepDx = toViewerX(rawSweepDx);
+          motionCentroidDx = toViewerX(rawCentroidDx);
+          const eps = 1e-6;
+          if (Math.abs(motionSweepDx) < eps || Math.abs(motionCentroidDx) < eps) {
+            motionDebugLabel = "neutral/undetermined";
+          } else {
+            const dot = motionSweepDx * motionCentroidDx;
+            motionDebugLabel = dot > 0 ? "with-motion" : "against-motion";
+          }
+        }
+        motionDebugState.prevLightPosX = Number.isFinite(currentLightPosX) ? currentLightPosX : null;
+        motionDebugState.prevCentroid = observerCentroid
+          ? { x: observerCentroid.x, y: observerCentroid.y }
+          : null;
 
         tracedRays.forEach(function (ray) {
           const points = getRayPoints(ray).filter(function (p) {
@@ -1711,6 +2005,35 @@
 
           rayCount += 1;
           raySegmentCount += Math.max(0, points.length - 1);
+        });
+
+        reflectedRays.forEach(function (ray) {
+          const points = getRayPoints(ray).filter(function (p) {
+            return p && Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z);
+          });
+          if (points.length < 2) return;
+          reflectedRayCount += 1;
+          reflectedRaySegmentCount += Math.max(0, points.length - 1);
+          if (!uiState.showReflectedRays) return;
+          if (!Number.isFinite(corneaAnteriorZ) || !Number.isFinite(corneaPosteriorZ)) return;
+          const zMin = Math.min(corneaAnteriorZ, corneaPosteriorZ);
+          const zMax = Math.max(corneaAnteriorZ, corneaPosteriorZ);
+          const slabPoints = clipPolylineByZRange(points, zMin, zMax);
+          if (slabPoints.length < 2) return;
+          const positions = [];
+          slabPoints.forEach(function (p) {
+            positions.push(p.x, p.y, p.z);
+          });
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+          const material = new THREE.LineBasicMaterial({
+            color: 0x22d3ee,
+            transparent: true,
+            opacity: 0.95,
+          });
+          const line = new THREE.Line(geometry, material);
+          addSimulationObject(line, eyeGeometryGroup);
+          reflectedCorneaExitRenderedCount += 1;
         });
 
         const traceSurfaceList = flattenTraceSurfaces(
@@ -1907,9 +2230,22 @@
           : "off") + "\n" +
         "compound(toricZ->sphericalZ, +z) check:\n" + compoundText + "\n" +
         "rays(simulated/rendered): " + tracedRays.length + " / " + rayCount + "\n" +
+        "reflected rays(traced): " + reflectedRayCount + "\n" +
+        "reflected cornea-exit(rendered): " + reflectedCorneaExitRenderedCount + "\n" +
+        "observer reflex pairs: " + (observerReflex?.pairs?.length || 0) + "\n" +
+        "observer pupil hits: " + observerPupilHits.length + "\n" +
+        "observer centroid (x,y): "
+          + (observerCentroid
+            ? (toFixedOrNa(toViewerX(observerCentroid.x), 4) + ", " + toFixedOrNa(observerCentroid.y, 4))
+            : "none")
+          + "\n" +
+        "motion sweep dx (viewer-X): " + toFixedOrNa(motionSweepDx, 6) + "\n" +
+        "motion centroid dx (viewer-X): " + toFixedOrNa(motionCentroidDx, 6) + "\n" +
+        "motion debug: " + motionDebugLabel + "\n" +
         "source points(rendered): " + sourcePointCount + "\n" +
         "source direction arrows: " + sourceDirectionArrowCount + "\n" +
         "ray segments: " + raySegmentCount + "\n" +
+        "reflected segments: " + reflectedRaySegmentCount + "\n" +
         "sturm intervals: " + sturmIntervalCount + "\n" +
         "sturm focal lines: " + sturmFocalLineCount + "\n" +
         "sturm approx markers: " + sturmApproxMarkerCount + "\n" +
@@ -1970,6 +2306,10 @@
             : "";
           affineMeta.textContent =
             "current pairs: " + affineResult.count + "\n" +
+            "observer reflex pairs: " + (observerReflex?.pairs?.length || 0) + "\n" +
+            "observer pupil hits: " + observerPupilHits.length + "\n" +
+            "observer plane: pupil_stop\n" +
+            "observer affine: " + (observerReflex?.affine ? "available" : "unavailable (<4 pairs)") + "\n" +
             distBlock +
             "[x'; y'] = [[a b c], [d e f]] [x y 1]^T (현재)\n" +
             "a=" + toFixedOrNa(affineResult.a, 6) +
@@ -1992,7 +2332,12 @@
           { title: "1) 광원", showSourceOnly: true },
           { title: "2) 정시(eye only)", affine: affineResultOrtho },
           { title: "3) 눈 굴절(프리즘 반영)", affine: affineResultEyeOnly },
-          { title: "4) 안경 + 눈", affine: affineResult },
+          {
+            title: "4) Observer Pupil Hits (분포 반사)",
+            scatterOnly: true,
+            pupilRadiusMm: pupilRadiusMm,
+            points: observerPupilHits,
+          },
         ]);
         if (typeof eyePrismEngine?.dispose === "function") eyePrismEngine.dispose();
         if (typeof orthoRefEngine?.dispose === "function") orthoRefEngine.dispose();

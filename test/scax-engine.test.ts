@@ -260,6 +260,18 @@ describe("SCAXEngine", () => {
       expect(Number.isFinite(dLine?.approx_center?.z)).toBe(true);
     });
 
+    it("반사광 역추적 API는 눈 밖으로 향하는 광선을 반환한다", () => {
+      const simulator = new SCAXEngine({
+        eye: { s: 0, c: 0, ax: 0, p: 0, p_ax: 0 },
+        lens: [],
+        light_source: { type: "radial", radius: 0, division: 4, angle_division: 8, z: -20, vergence: 0 },
+      });
+      simulator.rayTracing();
+      const reflected = simulator.traceReflectedRays();
+      expect(reflected.length).toBeGreaterThan(0);
+      expect(reflected[0]?.getDirection().z).toBeLessThan(0);
+    });
+
     it("NaN 입력이 포함되어도 회전/시뮬레이션 결과가 유한값으로 유지된다", () => {
       const simulator = new SCAXEngine({
         eye: { s: 0, c: 0, ax: 0, p: 0, p_ax: 0, tilt: { x: Number.NaN, y: Number.NaN } },

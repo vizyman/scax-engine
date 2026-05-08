@@ -55,6 +55,14 @@ export default class AsphericalSurface extends Surface {
     };
   }
 
+  private effectiveIndicesForIncidence(incidentDir: Vector3, normalIntoSecond: Vector3, ray: Ray) {
+    const { nBefore, nAfter } = this.refractiveIndicesForRay(ray);
+    if (incidentDir.dot(normalIntoSecond) < 0) {
+      return { nBefore: nAfter, nAfter: nBefore };
+    }
+    return { nBefore, nAfter };
+  }
+
   /**
    * 비구면 사그(sag)와 그 기울기(미분)를 계산합니다.
    *
@@ -265,7 +273,7 @@ export default class AsphericalSurface extends Surface {
 
     const cos1 = Math.max(-1, Math.min(1, normalIntoSecond.dot(incidentDir)));
     const sin1Sq = Math.max(0, 1 - cos1 * cos1);
-    const { nBefore, nAfter } = this.refractiveIndicesForRay(ray);
+    const { nBefore, nAfter } = this.effectiveIndicesForIncidence(incidentDir, normalIntoSecond, ray);
     const sin2 = (nBefore / nAfter) * Math.sqrt(sin1Sq);
 
     // 전반사(TIR)

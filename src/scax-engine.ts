@@ -23,6 +23,7 @@ import { NavarroParameter } from "./parameters/eye/navarro-parameter";
 import Ray from "./ray/ray";
 import Sturm, { type SturmProfileWorldZBounds } from "./sturm/sturm";
 import ApertureStopSurface from "./surfaces/aperture-stop-surface";
+import SphericalImageSurface from "./surfaces/spherical-image";
 import STSurface from "./surfaces/st-surface";
 import Surface from "./surfaces/surface";
 import DegToTABO from "./utils/deg-to-tabo";
@@ -546,6 +547,71 @@ export class SCAXEngineCore {
     return this.lastAffineAnalysis;
   }
 
+  private retinaSurface() {
+    const retina = this.surfaces.find((surface) => {
+      const candidate = surface as unknown as { name?: string };
+      return String(candidate.name ?? "").toLowerCase() === "retina";
+    });
+    return retina instanceof SphericalImageSurface ? retina : null;
+  }
+
+  /**
+   * 망막에서 생성된 반사광을 눈/렌즈를 거슬러 역추적한 결과를 반환합니다.
+   * - eye: posterior -> anterior(역순)
+   * - world 복귀(eye rotation 적용)
+   * - lens prism 역벡터 적용
+   * - lens: front -> back(역순)
+   */
+  public traceReflectedRays(): Ray[] {
+    if (!this.tracedRays.length) {
+      this.rayTracing();
+    }
+    const retina = this.retinaSurface();
+    if (!retina) return [];
+    const seedRays = retina.getReflectedRays();
+    const eyeSurfacesReverse = [...this.sortedEyeSurfaces]
+      .filter((surface) => String((surface as unknown as { name?: string }).name ?? "").toLowerCase() !== "retina")
+      .reverse();
+    const lensSurfacesReverse = [...this.sortedLensSurfaces].reverse();
+    const traced: Ray[] = [];
+
+    for (const seed of seedRays) {
+      let activeRay = seed.clone();
+      let valid = true;
+      for (const surface of eyeSurfacesReverse) {
+        const nextRay = surface.refract(activeRay);
+        if (!(nextRay instanceof Ray)) {
+          valid = false;
+          break;
+        }
+        activeRay = nextRay;
+      }
+      if (!valid) {
+        if (this.getRayPoints(activeRay).length >= 2) traced.push(activeRay);
+        continue;
+      }
+
+      activeRay = this.transformRayAroundPivot(activeRay, this.eyeRotationQuaternion, this.eyeRotationPivot);
+      activeRay = this.applyPrismVectorToRay(activeRay, {
+        x: -this.lensPrismVector.x,
+        y: -this.lensPrismVector.y,
+      });
+      for (const surface of lensSurfacesReverse) {
+        const nextRay = surface.refract(activeRay);
+        if (!(nextRay instanceof Ray)) {
+          valid = false;
+          break;
+        }
+        activeRay = nextRay;
+      }
+      if (valid || this.getRayPoints(activeRay).length >= 2) {
+        traced.push(activeRay);
+      }
+    }
+    return traced;
+  }
+
+
   private surfaceOrderZ(surface: Surface) {
     const z = Number(this.readSurfacePosition(surface)?.z);
     return Number.isFinite(z) ? z : 0;
@@ -902,4 +968,9 @@ export default class SCAXEngine {
   public getAffineAnalysis(): AffineAnalysisResult {
     return this.core.getAffineAnalysis();
   }
+
+  public traceReflectedRays(): Ray[] {
+    return this.core.traceReflectedRays();
+  }
+
 }

@@ -1,4 +1,4 @@
-import { Vector3 } from "three";
+import { Euler, Quaternion, Vector3 } from "three";
 import {
   FraunhoferLine,
   normalizeRefractiveIndexSpec,
@@ -290,6 +290,13 @@ export default class STSurface extends Surface {
     );
   }
 
+  private worldDirToLocal(worldDirection: Vector3) {
+    const tiltXRad = (this.tilt.x * Math.PI) / 180;
+    const tiltYRad = (this.tilt.y * Math.PI) / 180;
+    const inverse = new Quaternion().setFromEuler(new Euler(tiltXRad, tiltYRad, 0, "XYZ")).invert();
+    return worldDirection.clone().applyQuaternion(inverse).normalize();
+  }
+
   refract(ray: Ray): Ray | null {
     // 무도수 ST면은 기하(면 위치/경사)는 유지하되 굴절력은 0으로 취급하여 직진 통과시킵니다.
     if (this.isOpticallyNeutral()) {
@@ -315,13 +322,24 @@ export default class STSurface extends Surface {
       return single;
     }
 
-    // +z 진행: 토릭(작은 z) → 구면(큰 z)
-    const afterToric = this.toricSurface.refract(ray);
-    if (!afterToric) return null;
-    const afterSpherical = this.sphericalSurface.refract(afterToric);
+    // 진행 방향에 따라 복합면 통과 순서를 바꿉니다.
+    // forward(+z local): toric -> spherical
+    // reverse(-z local): spherical -> toric
+    const localDir = this.worldDirToLocal(ray.getDirection().normalize());
+    if (localDir.z >= 0) {
+      const afterToric = this.toricSurface.refract(ray);
+      if (!afterToric) return null;
+      const afterSpherical = this.sphericalSurface.refract(afterToric);
+      if (!afterSpherical) return null;
+      this.refractedRays.push(afterSpherical.clone());
+      return afterSpherical;
+    }
+    const afterSpherical = this.sphericalSurface.refract(ray);
     if (!afterSpherical) return null;
-    this.refractedRays.push(afterSpherical.clone());
-    return afterSpherical;
+    const afterToric = this.toricSurface.refract(afterSpherical);
+    if (!afterToric) return null;
+    this.refractedRays.push(afterToric.clone());
+    return afterToric;
   }
 
   incident(ray: Ray): Vector3 | null {

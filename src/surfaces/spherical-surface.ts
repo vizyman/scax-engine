@@ -43,6 +43,15 @@ export default class SphericalSurface extends Surface {
     };
   }
 
+  private effectiveIndicesForIncidence(incidentDir: Vector3, normalIntoSecond: Vector3, ray: Ray) {
+    const { nBefore, nAfter } = this.refractiveIndicesForRay(ray);
+    // incidentDir가 "2번째 매질 방향 법선"과 반대면 second->first 입사이므로 매질을 교환합니다.
+    if (incidentDir.dot(normalIntoSecond) < 0) {
+      return { nBefore: nAfter, nAfter: nBefore };
+    }
+    return { nBefore, nAfter };
+  }
+
   /**
    * 반경이 너무 크거나 비정상 값이면 평면으로 간주합니다.
    * (legacy 코드의 planar fallback 동작을 그대로 반영)
@@ -209,7 +218,7 @@ export default class SphericalSurface extends Surface {
 
     const cos1 = Math.max(-1, Math.min(1, normal.dot(incidentDir)));
     const sin1Sq = Math.max(0, 1 - cos1 * cos1);
-    const { nBefore, nAfter } = this.refractiveIndicesForRay(ray);
+    const { nBefore, nAfter } = this.effectiveIndicesForIncidence(incidentDir, normal, ray);
     const sin2 = (nBefore / nAfter) * Math.sqrt(sin1Sq);
 
     // 전반사(TIR)

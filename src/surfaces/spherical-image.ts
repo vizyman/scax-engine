@@ -16,9 +16,12 @@ export type SphericalImageSurfaceProps = {
  * 망막 위치를 표현하는 데 사용됩니다.
  */
 export default class SphericalImageSurface extends Surface {
+  private static readonly SPECULAR_WEIGHT = 0.2;
+  private static readonly DIFFUSE_SAMPLE_COUNT = 8;
   private r: number = 0;
   private retina_extra_after: boolean = true;
   private hitPoints: Vector3[] = [];
+  private reflectedRays: Ray[] = [];
   constructor(props: SphericalImageSurfaceProps) {
     super({ type: "spherical-image", name: props.name, position: props.position, tilt: props.tilt });
     const { r, retina_extra_after = true } = props;
@@ -40,6 +43,48 @@ export default class SphericalImageSurface extends Surface {
     return new Vector3(this.position.x, this.position.y, this.position.z + this.r);
   }
 
+  private normalAt(hitPoint: Vector3) {
+    if (this.isPlanar()) return new Vector3(0, 0, 1);
+    const center = this.sphereCenter();
+    const outward = hitPoint.clone().sub(center).normalize();
+    return this.r < 0 ? outward : outward.multiplyScalar(-1);
+  }
+
+  private tangentBasis(normal: Vector3) {
+    const helper = Math.abs(normal.z) < 0.9
+      ? new Vector3(0, 0, 1)
+      : new Vector3(0, 1, 0);
+    const tangent = helper.clone().cross(normal).normalize();
+    const bitangent = normal.clone().cross(tangent).normalize();
+    return { tangent, bitangent };
+  }
+
+  private createReflectedDirections(inDirection: Vector3, normal: Vector3) {
+    // Perfect-mirror component.
+    const mirror = inDirection.clone().sub(normal.clone().multiplyScalar(2 * inDirection.dot(normal))).normalize();
+    // Diffuse component: deterministic cosine-like hemisphere samples around the surface normal.
+    const { tangent, bitangent } = this.tangentBasis(normal);
+    const directions: Vector3[] = [];
+    const n = Math.max(1, SphericalImageSurface.DIFFUSE_SAMPLE_COUNT);
+    for (let i = 0; i < n; i += 1) {
+      const u = (i + 0.5) / n;
+      const v = (i * 0.61803398875) % 1; // golden-ratio sequence for angular spread
+      const phi = 2 * Math.PI * v;
+      const cosTheta = Math.sqrt(1 - u);
+      const sinTheta = Math.sqrt(u);
+      const d = normal.clone()
+        .multiplyScalar(cosTheta)
+        .add(tangent.clone().multiplyScalar(Math.cos(phi) * sinTheta))
+        .add(bitangent.clone().multiplyScalar(Math.sin(phi) * sinTheta))
+        .normalize();
+      // Keep only rays returning toward the observer side (+/-z sign of mirror).
+      if (d.dot(mirror) > 0) directions.push(d);
+    }
+    const specularReplicas = Math.max(1, Math.round(n * SphericalImageSurface.SPECULAR_WEIGHT));
+    for (let i = 0; i < specularReplicas; i += 1) directions.push(mirror.clone());
+    return directions.length ? directions : [mirror];
+  }
+
   getHitPoints() {
     return this.hitPoints.map((point) => point.clone());
   }
@@ -48,9 +93,18 @@ export default class SphericalImageSurface extends Surface {
     this.hitPoints = [];
   }
 
+  getReflectedRays() {
+    return this.reflectedRays.map((ray) => ray.clone());
+  }
+
+  clearReflectedRays() {
+    this.reflectedRays = [];
+  }
+
   public override clearTraceHistory() {
     super.clearTraceHistory();
     this.clearHitPoints();
+    this.clearReflectedRays();
   }
 
   incident(ray: Ray): Vector3 | null {
@@ -98,10 +152,25 @@ export default class SphericalImageSurface extends Surface {
     const hitPoint = this.incident(ray);
     if (!hitPoint) return null;
 
-    // 망막면은 굴절하지 않고, 입사 방향을 그대로 유지합니다.
-    const outDirection = ray.getDirection().normalize();
+    const inDirection = ray.getDirection().normalize();
+    const outDirection = inDirection.clone();
     const tracedRay = ray.clone();
     tracedRay.appendPoint(hitPoint);
+
+    const normal = this.normalAt(hitPoint);
+    const reflectedDirections = this.createReflectedDirections(inDirection, normal);
+    for (const reflectedDirection of reflectedDirections) {
+      const reflectedRay = ray.clone();
+      reflectedRay.appendPoint(hitPoint);
+      reflectedRay.continueFrom(
+        hitPoint.clone().addScaledVector(reflectedDirection, RAY_SURFACE_ESCAPE_MM),
+        reflectedDirection,
+      );
+      reflectedRay.appendPoint(
+        hitPoint.clone().addScaledVector(reflectedDirection, RETINA_EXTRA_AFTER_MM),
+      );
+      this.reflectedRays.push(reflectedRay.clone());
+    }
 
     // 망막 뒤 연장을 비활성화하면 교점에서 광선을 종료합니다.
     if (!this.retina_extra_after) {
