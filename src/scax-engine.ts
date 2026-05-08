@@ -219,8 +219,10 @@ export class SCAXEngineCore {
     const eyeRotXDeg = this.prismComponentToAngleDeg(this.eyePrismEffectVector.x);
     const eyeRotYDeg = this.prismComponentToAngleDeg(this.eyePrismEffectVector.y);
     this.eyeTiltDeg = this.normalizeEyeTilt(eye?.tilt);
-    const eyeEulerXDeg = (-eyeRotYDeg) + this.eyeTiltDeg.x;
-    const eyeEulerYDeg = eyeRotXDeg + this.eyeTiltDeg.y;
+    // Apply eye deviation in the opposite direction so a lens with the same
+    // prism/base prescription can optically compensate the eye deviation.
+    const eyeEulerXDeg = eyeRotYDeg + this.eyeTiltDeg.x;
+    const eyeEulerYDeg = (-eyeRotXDeg) + this.eyeTiltDeg.y;
     this.eyeRotationQuaternion = new Quaternion().setFromEuler(new Euler(
       (eyeEulerXDeg * Math.PI) / 180,
       (eyeEulerYDeg * Math.PI) / 180,
@@ -398,10 +400,22 @@ export class SCAXEngineCore {
    * - x_deg/y_deg는 프리즘 회전량에 eye.tilt를 합산한 최종 렌더 회전량입니다.
    */
   public getEyeRotation(): EyeRotationForRender {
-    const rx = this.prismVectorFromBase(this.eyePrismPrescription.p, this.eyePrismPrescription.p_ax);
-    const eyeEffect = this.vectorToPrismInfo(rx.x, rx.y);
-    const xDeg = this.prismComponentToAngleDeg(eyeEffect.x) + this.eyeTiltDeg.y;
-    const yDeg = this.prismComponentToAngleDeg(eyeEffect.y) + this.eyeTiltDeg.x;
+    // Keep render rotation strictly aligned with the internal eye rotation used in ray tracing.
+    // Internal eye-space Euler:
+    //   eyeEulerXDeg = eyeRotYDeg + tilt.x
+    //   eyeEulerYDeg = (-eyeRotXDeg) + tilt.y
+    // UI mapping (applyEyeRenderRotation):
+    //   object.rotation.x = -y_deg
+    //   object.rotation.y =  x_deg
+    // so we expose:
+    //   x_deg = eyeEulerYDeg
+    //   y_deg = -eyeEulerXDeg
+    const eyeRotXDeg = this.prismComponentToAngleDeg(this.eyePrismEffectVector.x);
+    const eyeRotYDeg = this.prismComponentToAngleDeg(this.eyePrismEffectVector.y);
+    const eyeEulerXDeg = eyeRotYDeg + this.eyeTiltDeg.x;
+    const eyeEulerYDeg = (-eyeRotXDeg) + this.eyeTiltDeg.y;
+    const xDeg = eyeEulerYDeg;
+    const yDeg = -eyeEulerXDeg;
     return {
       x_deg: xDeg,
       y_deg: yDeg,

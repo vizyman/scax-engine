@@ -98,13 +98,13 @@ describe("SCAXEngine", () => {
       expect(Math.abs(result.info.prism.lens.p_y)).toBeLessThan(1e-9);
     });
 
-    it("렌더용 눈 회전량은 eye 프리즘 벡터 방향으로 계산된다", () => {
+    it("렌더용 눈 회전량은 내부 ray-tracing 회전과 동일한 부호 규칙을 따른다", () => {
       const simulator = new SCAXEngine({
         eye: { s: 0, c: 0, ax: 0, p: 1, p_ax: 0 },
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
       const rotation = simulator.getEyeRotation();
-      // p=1Δ, base 0° 입력이면 렌더 회전 x는 음수 방향으로 계산된다.
+      // p=1Δ, base 0° 입력이면 eye 내부 회전(yaw -)과 동일하게 x_deg가 음수다.
       expect(rotation.x_deg).toBeLessThan(0);
       expect(Math.abs(rotation.magnitude_deg)).toBeCloseTo(0.57, 1);
     });
@@ -116,7 +116,7 @@ describe("SCAXEngine", () => {
       });
       const rotation = simulator.getEyeRotation();
       expect(rotation.x_deg).toBeCloseTo(-2, 8);
-      expect(rotation.y_deg).toBeCloseTo(3, 8);
+      expect(rotation.y_deg).toBeCloseTo(-3, 8);
     });
 
     it("순수 프리즘 렌즈(S=0,C=0)도 Base 기준 반대방향으로 광선을 편위시킨다", () => {
@@ -173,7 +173,7 @@ describe("SCAXEngine", () => {
       expect(baseDir).toBeDefined();
       expect(prismDir).toBeDefined();
       expect(Math.abs(prismDir!.x)).toBeGreaterThan(Math.abs(baseDir!.x) + 1e-6);
-      expect(prismDir!.x).toBeLessThan(0);
+      expect(prismDir!.x).toBeGreaterThan(0);
       const withEyePrismSim = withEyePrism.simulate();
       expect(withEyePrismSim.info.prism.eye.magnitude).toBeCloseTo(2, 8);
       expect(withEyePrism.getEyeRotation().magnitude_deg).toBeGreaterThan(0);
