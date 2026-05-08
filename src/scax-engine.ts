@@ -10,6 +10,7 @@ import {
   RadialLightSourceProps,
 } from "./light-sources/light-source";
 import {
+  DEFAULT_STURM_PROFILE_WORLD_Z_PAST_RETINA_MM,
   EYE_ST_SURFACE_OFFSET_MM,
   FRAUNHOFER_REFRACTIVE_INDICES,
   PUPIL_SIZE,
@@ -20,7 +21,7 @@ import { EyeModelParameter } from "./parameters/eye/eyemodel-parameter";
 import { GullstrandParameter } from "./parameters/eye/gullstrand-parameter";
 import { NavarroParameter } from "./parameters/eye/navarro-parameter";
 import Ray from "./ray/ray";
-import Sturm from "./sturm/sturm";
+import Sturm, { type SturmProfileWorldZBounds } from "./sturm/sturm";
 import ApertureStopSurface from "./surfaces/aperture-stop-surface";
 import STSurface from "./surfaces/st-surface";
 import Surface from "./surfaces/surface";
@@ -466,6 +467,32 @@ export class SCAXEngineCore {
 
 
   /**
+   * Sturm 선초/근사중심에 사용할 슬라이스 centroid(world z) 구간:
+   * 각막 전면(cornea_anterior) 이상 ~ 망막(retina) + 여유 이하.
+   */
+  private sturmEyeProfileWorldZBounds(): SturmProfileWorldZBounds | undefined {
+    let corneaAnteriorZ = Number.POSITIVE_INFINITY;
+    let retinaZ = Number.NEGATIVE_INFINITY;
+    for (const surface of this.surfaces) {
+      const name = String((surface as unknown as { name?: string }).name || "").toLowerCase();
+      const z = Number(this.readSurfacePosition(surface)?.z);
+      if (!Number.isFinite(z)) continue;
+      if (name.includes("cornea") && name.includes("anterior")) {
+        corneaAnteriorZ = Math.min(corneaAnteriorZ, z);
+      }
+      if (name === "retina") {
+        retinaZ = Math.max(retinaZ, z);
+      }
+    }
+    if (!Number.isFinite(corneaAnteriorZ) || !Number.isFinite(retinaZ)) return undefined;
+    if (retinaZ + 1e-9 < corneaAnteriorZ) return undefined;
+    return {
+      zMin: corneaAnteriorZ,
+      zMax: retinaZ + DEFAULT_STURM_PROFILE_WORLD_Z_PAST_RETINA_MM,
+    };
+  }
+
+  /**
    * 2) Sturm calculation 전용 함수
    * traced ray 집합에서 z-scan 기반 Sturm 슬라이스/근사 중심을 계산합니다.
    */
@@ -476,6 +503,7 @@ export class SCAXEngineCore {
       rays,
       this.effectiveCylinderFromOpticSurfaces(),
       this.lastSourceRaysForSturm,
+      this.sturmEyeProfileWorldZBounds() ?? null,
     );
     return this.lastSturmGapAnalysis;
   }

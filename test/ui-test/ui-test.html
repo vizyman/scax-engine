@@ -41,7 +41,10 @@
       font-size: 12px;
       line-height: 1.4;
       max-width: 420px;
-      white-space: pre-line;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-y: auto;
+      max-height: min(88vh, 900px);
     }
     #affine-panel {
       position: absolute;
@@ -81,20 +84,23 @@
     <div id="affine-panel">Affine: Loading...</div>
   </div>
 
-  <script src="../../dist/scax-engine.umd.js"></script>
+  <!-- Engine: ESM from dist/ — each load uses a fresh query so the browser cannot serve a stale cached bundle. -->
   <script type="module">
     import * as THREE from "three";
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
     import GUI from "lil-gui";
 
+    const { SCAXEngine } = await import(
+      new URL(`../../dist/scax-engine.js?dev=${Date.now()}`, import.meta.url).href,
+    );
+
     (function () {
       const hud = document.getElementById("hud");
       const affinePanel = document.getElementById("affine-panel");
       const app = document.getElementById("app");
-      const ScaxEngine = globalThis.ScaxEngine;
 
-      if (!THREE || !ScaxEngine || !ScaxEngine.SCAXEngine || !affinePanel) {
-        hud.textContent = "Failed to load THREE or ScaxEngine UMD bundle.";
+      if (!THREE || !SCAXEngine || !affinePanel) {
+        if (hud) hud.textContent = "Failed to load THREE or SCAXEngine (check dist/ after npm run build).";
         return;
       }
       affinePanel.innerHTML =
@@ -1268,6 +1274,61 @@
         return "unknown";
       }
 
+      function sliceForHud(s) {
+        if (!s || typeof s !== "object") return null;
+        const p = s.profile;
+        return {
+          z: s.z,
+          depth: s.depth,
+          ratio: s.ratio,
+          size: s.size,
+          profile: p
+            ? {
+                at: p.at,
+                angleMajorDeg: p.angleMajorDeg,
+                angleMinorDeg: p.angleMinorDeg,
+                j0: p.j0,
+                j45: p.j45,
+                wMajor: p.wMajor,
+                wMinor: p.wMinor,
+                majorDirection: p.majorDirection,
+                minorDirection: p.minorDirection,
+              }
+            : null,
+        };
+      }
+
+      /** HUD 복사용: slices 전체는 용량 때문에 count + 첫/끝만 포함 */
+      function formatSturmSnapshotForHud(sturmResult) {
+        if (!sturmResult || typeof sturmResult !== "object") {
+          return { error: "no_sturm_result" };
+        }
+        const slices = sturmResult.slices_info?.slices;
+        const count = Number(sturmResult.slices_info?.count) || (Array.isArray(slices) ? slices.length : 0);
+        const summary = { count };
+        if (Array.isArray(slices) && slices.length > 0) {
+          summary.first = sliceForHud(slices[0]);
+          summary.last = sliceForHud(slices[slices.length - 1]);
+        }
+        const sturmInfo = Array.isArray(sturmResult.sturm_info)
+          ? sturmResult.sturm_info.map(function (item) {
+              return {
+                line: item.line,
+                wavelength_nm: item.wavelength_nm,
+                color: item.color,
+                ray_count: item.ray_count,
+                has_astigmatism: item.has_astigmatism,
+                method: item.method,
+                analysis_axis: item.analysis_axis,
+                anterior: sliceForHud(item.anterior),
+                posterior: sliceForHud(item.posterior),
+                approx_center: item.approx_center ?? null,
+              };
+            })
+          : [];
+        return { slices_info: summary, sturm_info: sturmInfo };
+      }
+
       function toFinitePoint(pointLike) {
         if (!pointLike) return null;
         const x = Number(pointLike.x);
@@ -1341,7 +1402,7 @@
         const eyePrismState = Object.assign({}, zeroLensState);
         const lensConfigs = buildLensConfigs(uiState);
         const hasLens = Array.isArray(lensConfigs) && lensConfigs.length > 0;
-        const engine = new ScaxEngine.SCAXEngine({
+        const engine = new SCAXEngine({
           eyeModel: uiState.eyeModel,
           pupil_type: uiState.pupilType,
           eye: {
@@ -1430,7 +1491,7 @@
           .filter(Boolean)
           .length;
         const affineResult = engine.getAffineAnalysis();
-        const orthoRefEngine = new ScaxEngine.SCAXEngine({
+        const orthoRefEngine = new SCAXEngine({
           eyeModel: orthoRefState.eyeModel,
           pupil_type: orthoRefState.pupilType,
           eye: {
@@ -1446,7 +1507,7 @@
         });
         orthoRefEngine.simulate();
         const affineResultOrtho = orthoRefEngine.getAffineAnalysis();
-        const eyePrismEngine = new ScaxEngine.SCAXEngine({
+        const eyePrismEngine = new SCAXEngine({
           eyeModel: eyePrismState.eyeModel,
           pupil_type: eyePrismState.pupilType,
           eye: {
@@ -1825,9 +1886,11 @@
             .join("\n")
           : "none";
 
+        const sturmHudJson = JSON.stringify(formatSturmSnapshotForHud(sturmResult), null, 2);
+
         hud.textContent =
         "SCAX UMD Mesh Render Test\n" +
-        "global: window.ScaxEngine.SCAXEngine\n" +
+        "module: SCAXEngine from dist/scax-engine.js (cache-busted each load)\n" +
         "config: model=" + uiState.eyeModel +
         ", pupil=" + uiState.pupilType +
         ", pupilDisk=" + (uiState.showPupilDisk ? "show" : "hide") +
@@ -1877,7 +1940,10 @@
         "meshes: " + meshCount + "\n" +
         "vertices: " + vertexCount + "\n" +
         "triangles: " + triangleCount + "\n" +
-        "status: geometry + rays + sturm rendered";
+        "status: geometry + rays + sturm rendered\n" +
+        "\n======== STURM (copy JSON below) ========\n" +
+        sturmHudJson +
+        "\n======== /STURM ========";
 
         if (!affineResult) {
           affineMeta.textContent =

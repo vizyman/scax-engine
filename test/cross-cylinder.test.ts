@@ -59,4 +59,45 @@ describe("Cross cylinder (JCC) vs phoropter UI prescription", () => {
     const lensCylinderMagnitude = Math.abs(summary[1]!.d - summary[0]!.d);
     expect(lensCylinderMagnitude).toBeCloseTo(Math.abs(PHOROPTER_UI_CROSS_CYLINDER_LENS.c), 10);
   });
+
+  it("프리즘 렌즈와 함께일 때 카니널 TABO 축에서도 Sturm이 선초점 전·후를 반환한다", () => {
+    const prismLens = {
+      s: 0,
+      c: 0,
+      ax: 0,
+      p: 2,
+      p_ax: 180,
+      position: { x: 0, y: 0, z: 12 },
+      tilt: { x: 0, y: 0 },
+    } as const;
+
+    for (const axTABO of [0, 90, 180] as const) {
+      const engine = new SCAXEngine({
+        eyeModel: "gullstrand",
+        eye: { s: 0, c: 0, ax: 0, p: 0, p_ax: 0 },
+        lens: [
+          prismLens,
+          { ...PHOROPTER_UI_CROSS_CYLINDER_LENS, ax: axTABO },
+        ],
+        light_source: { type: "grid", width: 6, height: 6, division: 6, z: -20, vergence: 0 },
+      });
+      const traced = engine.rayTracing();
+      const sturm = engine.sturmCalculation(traced) as {
+        sturm_info?: Array<{
+          line: string;
+          has_astigmatism?: boolean;
+          anterior?: unknown;
+          posterior?: unknown;
+          approx_center?: { z: number } | null;
+        }>;
+      };
+      const dLine = sturm.sturm_info?.find((e) => e.line === "d");
+      expect(dLine, `d-line exists (xcyl ax TABO=${axTABO}°)`).toBeDefined();
+      expect(dLine?.has_astigmatism).toBe(true);
+      expect(dLine?.anterior, `anterior (ax=${axTABO})`).toBeTruthy();
+      expect(dLine?.posterior, `posterior (ax=${axTABO})`).toBeTruthy();
+      expect(dLine?.approx_center).not.toBeNull();
+      expect(Number.isFinite(dLine?.approx_center?.z)).toBe(true);
+    }
+  });
 });

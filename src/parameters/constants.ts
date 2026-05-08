@@ -195,6 +195,22 @@ export const DEFAULT_STURM_TOP2_MIN_GAP_MM = 0.0;
 export const DEFAULT_STURM_TOP2_MIN_ANGLE_GAP_DEG = 45;
 
 /**
+ * Sturm Top2 이각(J0,J45) phasor 내적 상한: cos(Δ₂θ) 이 이 값 이하일 때
+ * 두 주경선을 직교(선초점 쌍)로 취급한다. -1에 가까울수록 엄격.
+ */
+export const DEFAULT_STURM_TOP2_PHASOR_OPPOSITION_MAX_DOT = -0.86;
+
+/**
+ * phasor 직교 판정 실패 시 완화 단계에서 쓰는 내적 상한
+ */
+export const DEFAULT_STURM_TOP2_PHASOR_FALLBACK_MAX_DOT = -0.55;
+
+/**
+ * 축 각·phasor 폴백 후에도 후보가 없을 때 허용하는 최소 각도 차(도)
+ */
+export const DEFAULT_STURM_TOP2_AXIS_LAST_RESORT_MIN_GAP_DEG = 22;
+
+/**
  * 실효 난시량이 이 값(D) 이상이면 U/V 중간점을 CLC 근사 중심으로 우선 사용
  */
 export const DEFAULT_EFFECTIVE_CYLINDER_THRESHOLD_D = 0.125;
@@ -203,3 +219,9 @@ export const DEFAULT_EFFECTIVE_CYLINDER_THRESHOLD_D = 0.125;
  * Sturm z-scan 간격(mm)
  */
 export const DEFAULT_STURM_STEP_MM = 0.01;
+
+/**
+ * Sturm 분석 슬라이스의 profile.at.z를 각막(앞)~망막+이 값(mm) 구간으로 한정할 때
+ * 망막 표면 z보다 진행 방향 +z로 허용하는 여유.
+ */
+export const DEFAULT_STURM_PROFILE_WORLD_Z_PAST_RETINA_MM = 4;

@@ -2,10 +2,16 @@ import { Vector3 } from "three";
 import {
   DEFAULT_EFFECTIVE_CYLINDER_THRESHOLD_D,
   DEFAULT_STURM_STEP_MM,
+  DEFAULT_STURM_TOP2_AXIS_LAST_RESORT_MIN_GAP_DEG,
   DEFAULT_STURM_TOP2_MIN_ANGLE_GAP_DEG,
   DEFAULT_STURM_TOP2_MIN_GAP_MM,
+  DEFAULT_STURM_TOP2_PHASOR_FALLBACK_MAX_DOT,
+  DEFAULT_STURM_TOP2_PHASOR_OPPOSITION_MAX_DOT,
 } from "../parameters/constants";
 import Ray from "../ray/ray";
+
+/** Sturm 선초 분석에 사용할 슬라이스 centroid(world) z 구간 [zMin, zMax] (mm) */
+export type SturmProfileWorldZBounds = { zMin: number; zMax: number };
 
 type FraunhoferLine = "g" | "F" | "e" | "d" | "C" | "r";
 
@@ -19,6 +25,9 @@ type SturmSlice = {
     wMajor: number;
     wMinor: number;
     angleMajorDeg: number;
+    /** 이각 공간 난시 phasor: (cos 2θ, sin 2θ), θ = 주경선 각(rad) */
+    j0: number;
+    j45: number;
     angleMinorDeg: number;
     majorDirection: { x: number; y: number; z: number };
     minorDirection: { x: number; y: number; z: number };
@@ -33,7 +42,12 @@ type SturmSlice = {
 export default class Sturm {
   private lastResult: unknown = null;
 
-  public calculate(rays: Ray[], effectiveCylinderD: number, axisReferenceRays?: Ray[]) {
+  public calculate(
+    rays: Ray[],
+    effectiveCylinderD: number,
+    axisReferenceRays?: Ray[],
+    profileWorldZBounds?: SturmProfileWorldZBounds | null,
+  ) {
     const frame = this.analysisFrameFromRays(axisReferenceRays?.length ? axisReferenceRays : rays);
     const depthRange = this.depthRangeFromRays(rays, frame);
     const sturmSlices = this.collectSturmSlices(rays, frame, depthRange, DEFAULT_STURM_STEP_MM);
@@ -42,7 +56,7 @@ export default class Sturm {
       const groupFrame = this.analysisFrameFromRays(group.rays, frame);
       const groupDepthRange = this.depthRangeFromRays(group.rays, groupFrame);
       const slices = this.collectSturmSlices(group.rays, groupFrame, groupDepthRange, DEFAULT_STURM_STEP_MM);
-      const analysis = this.analyzeSturmSlices(slices, effectiveCylinderD);
+      const analysis = this.analyzeSturmSlices(slices, effectiveCylinderD, profileWorldZBounds);
       return {
         line: group.line,
         wavelength_nm: group.wavelength_nm,
@@ -191,6 +205,9 @@ export default class Sturm {
     const lambdaMinor = Math.max(0, trace / 2 - root);
     const thetaRad = 0.5 * Math.atan2(2 * sxy, sxx - syy);
     const angleMajorDeg = ((thetaRad * 180) / Math.PI + 360) % 180;
+    const twoThetaRad = 2 * thetaRad;
+    const j0 = Math.cos(twoThetaRad);
+    const j45 = Math.sin(twoThetaRad);
     const majorDirection = frame.u.clone().multiplyScalar(Math.cos(thetaRad))
       .add(frame.v.clone().multiplyScalar(Math.sin(thetaRad)))
       .normalize();
@@ -201,6 +218,8 @@ export default class Sturm {
       wMajor: Math.sqrt(lambdaMajor),
       wMinor: Math.sqrt(lambdaMinor),
       angleMajorDeg,
+      j0,
+      j45,
       angleMinorDeg: (angleMajorDeg + 90) % 180,
       majorDirection: {
         x: majorDirection.x,
@@ -244,6 +263,98 @@ export default class Sturm {
     return Math.min(d, 180 - d);
   }
 
+  private phasorDot(
+    p: { j0: number; j45: number },
+    q: { j0: number; j45: number },
+  ) {
+    return p.j0 * q.j0 + p.j45 * q.j45;
+  }
+
+  /**
+   * 평탄도 순으로 정렬된 슬라이스에서 선초점 쌍(직교 주경선)에 해당하는 Top2를 고른다.
+   * 주경선 각 대신 이각 phasor (cos 2θ, sin 2θ)로 직교를 판정하고, 실패 시 각도·전역 검색·깊이 폴백을 사용한다.
+   */
+  private pickFlattestSturmPair(
+    sortedByFlatness: SturmSlice[],
+    top2MinGapMm: number,
+    allSlices: SturmSlice[],
+  ): SturmSlice[] {
+    if (sortedByFlatness.length === 0) return [];
+
+    const first = sortedByFlatness[0];
+    const top2MinAngleGapDeg = DEFAULT_STURM_TOP2_MIN_ANGLE_GAP_DEG;
+    const phasorStrict = DEFAULT_STURM_TOP2_PHASOR_OPPOSITION_MAX_DOT;
+    const phasorLoose = DEFAULT_STURM_TOP2_PHASOR_FALLBACK_MAX_DOT;
+    const lastResortMinDeg = DEFAULT_STURM_TOP2_AXIS_LAST_RESORT_MIN_GAP_DEG;
+
+    const depthOk = (c: SturmSlice) => Math.abs(c.depth - first.depth) >= top2MinGapMm;
+
+    const byPhasor = (pool: SturmSlice[], maxDot: number) => pool.find((c) => (
+      c !== first
+      && depthOk(c)
+      && this.phasorDot(first.profile, c.profile) <= maxDot
+    ));
+
+    let second = byPhasor(sortedByFlatness, phasorStrict)
+      ?? byPhasor(sortedByFlatness, phasorLoose);
+
+    if (!second) {
+      second = sortedByFlatness.find((c) => (
+        c !== first
+        && depthOk(c)
+        && this.axisDiffDeg(c.profile.angleMajorDeg, first.profile.angleMajorDeg) >= top2MinAngleGapDeg
+      ));
+    }
+
+    if (!second) {
+      let best: SturmSlice | null = null;
+      let bestAxDiff = -1;
+      for (const c of sortedByFlatness) {
+        if (c === first || !depthOk(c)) continue;
+        const axd = this.axisDiffDeg(c.profile.angleMajorDeg, first.profile.angleMajorDeg);
+        if (axd > bestAxDiff) {
+          bestAxDiff = axd;
+          best = c;
+        }
+      }
+      if (best && bestAxDiff >= lastResortMinDeg) second = best;
+    }
+
+    // 평탄도 정렬 풀만으로는 같은 phasor만 연속으로 나오는 경우가 있어, 전 스캔에서 가장 반대인 phasor를 고른다.
+    if (!second) {
+      let best: SturmSlice | null = null;
+      let bestDot = 1;
+      for (const c of allSlices) {
+        if (c === first || !depthOk(c)) continue;
+        const d = this.phasorDot(first.profile, c.profile);
+        if (d < bestDot) {
+          bestDot = d;
+          best = c;
+        }
+      }
+      if (best && bestDot < -0.08) second = best;
+    }
+
+    // 마지막: 가장 납작한 슬라이스와 깊이 차가 가장 큰 “비교적 납작한” 슬라이스 (선초점이 z로 분리될 때)
+    if (!second) {
+      const flatThreshold = first.ratio * 1.5 + 1e-6;
+      let best: SturmSlice | null = null;
+      let bestDepthSpan = -1;
+      for (const c of allSlices) {
+        if (c === first || !depthOk(c)) continue;
+        if (c.ratio > flatThreshold) continue;
+        const span = Math.abs(c.depth - first.depth);
+        if (span > bestDepthSpan) {
+          bestDepthSpan = span;
+          best = c;
+        }
+      }
+      if (best) second = best;
+    }
+
+    return second ? [first, second] : [first];
+  }
+
   private buildApproxCenter(
     flattestTop2: Array<{ z: number; profile: { at: { x: number; y: number } } }>,
     smallestEllipse: { z: number; profile: { at: { x: number; y: number } } } | null,
@@ -272,6 +383,21 @@ export default class Sturm {
     return { x: first.profile.at.x, y: first.profile.at.y, z: first.z, mode: "top1-flat" };
   }
 
+  private slicesForSturmAnalysis(
+    sturmSlices: SturmSlice[],
+    bounds: SturmProfileWorldZBounds | null | undefined,
+  ): SturmSlice[] {
+    if (!bounds) return sturmSlices;
+    const zMin = bounds.zMin;
+    const zMax = bounds.zMax;
+    if (!Number.isFinite(zMin) || !Number.isFinite(zMax) || zMax < zMin) return sturmSlices;
+    const bounded = sturmSlices.filter((s) => {
+      const z = s.profile?.at?.z;
+      return Number.isFinite(z) && z >= zMin && z <= zMax;
+    });
+    return bounded.length >= 2 ? bounded : sturmSlices;
+  }
+
   private groupByFraunhoferLine(rays: Ray[]) {
     const groups = new Map<FraunhoferLine, {
       line: FraunhoferLine;
@@ -297,25 +423,22 @@ export default class Sturm {
     return [...groups.values()].sort((a, b) => this.lineOrder.indexOf(a.line) - this.lineOrder.indexOf(b.line));
   }
 
-  private analyzeSturmSlices(sturmSlices: SturmSlice[], effectiveCylinderD: number) {
+  private analyzeSturmSlices(
+    sturmSlices: SturmSlice[],
+    effectiveCylinderD: number,
+    profileWorldZBounds?: SturmProfileWorldZBounds | null,
+  ) {
     const top2MinGapMm = DEFAULT_STURM_TOP2_MIN_GAP_MM;
-    const top2MinAngleGapDeg = DEFAULT_STURM_TOP2_MIN_ANGLE_GAP_DEG;
     const effectiveCylinderThresholdD = DEFAULT_EFFECTIVE_CYLINDER_THRESHOLD_D;
     const preferTop2Mid = effectiveCylinderD >= effectiveCylinderThresholdD;
-    const sortedByFlatness = [...sturmSlices].sort((a, b) => a.ratio - b.ratio);
-    let flattestTop2: SturmSlice[] = [];
-
-    if (sortedByFlatness.length > 0) {
-      const first = sortedByFlatness[0];
-      const second = sortedByFlatness.find((candidate) => (
-        Math.abs(candidate.depth - first.depth) >= top2MinGapMm
-        && this.axisDiffDeg(candidate.profile.angleMajorDeg, first.profile.angleMajorDeg) >= top2MinAngleGapDeg
-      ));
-      flattestTop2 = second ? [first, second] : [first];
-    }
+    const slicesForAnalysis = this.slicesForSturmAnalysis(sturmSlices, profileWorldZBounds ?? null);
+    const sortedByFlatness = [...slicesForAnalysis].sort((a, b) => a.ratio - b.ratio);
+    const flattestTop2 = sortedByFlatness.length > 0
+      ? this.pickFlattestSturmPair(sortedByFlatness, top2MinGapMm, slicesForAnalysis)
+      : [];
 
     let smallestEllipse: SturmSlice | null = null;
-    for (const slice of sturmSlices) {
+    for (const slice of slicesForAnalysis) {
       if (!smallestEllipse || slice.size < smallestEllipse.size) smallestEllipse = slice;
     }
 
