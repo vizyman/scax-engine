@@ -16,6 +16,9 @@ export type SphericalImageSurfaceProps = {
  * 망막 위치를 표현하는 데 사용됩니다.
  */
 export default class SphericalImageSurface extends Surface {
+  // Retinoscopy motion validation prefers deterministic specular return.
+  // Diffuse retinal scatter can bias centroid-based motion labels.
+  private static readonly USE_DIFFUSE_SCATTER = false;
   private static readonly SPECULAR_WEIGHT = 0.2;
   private static readonly DIFFUSE_SAMPLE_COUNT = 8;
   private r: number = 0;
@@ -62,6 +65,9 @@ export default class SphericalImageSurface extends Surface {
   private createReflectedDirections(inDirection: Vector3, normal: Vector3) {
     // Perfect-mirror component.
     const mirror = inDirection.clone().sub(normal.clone().multiplyScalar(2 * inDirection.dot(normal))).normalize();
+    if (!SphericalImageSurface.USE_DIFFUSE_SCATTER) {
+      return [mirror];
+    }
     // Diffuse component: deterministic cosine-like hemisphere samples around the surface normal.
     const { tangent, bitangent } = this.tangentBasis(normal);
     const directions: Vector3[] = [];

@@ -289,6 +289,7 @@
         prevLightPosX: null,
         prevCentroid: null,
       };
+      let pendingInternalReflexSelfTest = false;
       // Cornea-front viewer convention:
       // in this scene, viewer-right corresponds to negative world/local X.
       const VIEWER_RIGHT_IS_NEGATIVE_X = true;
@@ -462,6 +463,32 @@
         refreshAllGuiControllers();
         requestSimulationRefresh();
       }
+      function applyLightAnglePresetOnXZPlane(angleDeg) {
+        const lightZ = -50;
+        const angleRad = THREE.MathUtils.degToRad(Number(angleDeg) || 0);
+        // world center = (lightPosX, lightPosY, lightPosZ + lightZ)
+        // keep source center on z=-50 plane and aim to pupil center (0,0,0)
+        const sourceWorldZ = lightZ;
+        const sourceWorldX = -sourceWorldZ * Math.tan(angleRad);
+        const sourceWorldY = 0;
+        const toPupil = new THREE.Vector3(-sourceWorldX, -sourceWorldY, -sourceWorldZ);
+        const tiltY = THREE.MathUtils.radToDeg(Math.atan2(toPupil.x, toPupil.z));
+        const tiltX = -THREE.MathUtils.radToDeg(Math.atan2(toPupil.y, Math.hypot(toPupil.x, toPupil.z)));
+        applyPreset({
+          lightZ: lightZ,
+          lightPosX: sourceWorldX,
+          lightPosY: sourceWorldY,
+          lightPosZ: sourceWorldZ - lightZ,
+          lightTiltX: tiltX,
+          lightTiltY: tiltY,
+        });
+      }
+      function applyLightYTiltPresetAtZNeg50(tiltYDeg) {
+        applyPreset({
+          lightZ: -50,
+          lightTiltY: Number(tiltYDeg) || 0,
+        });
+      }
       const presetActions = {
         // 하방 주시 시 안경 경사각/하강량과 렌즈 중심 법선 입사를 확인하기 위한 프리셋
         applyDownGazeSpectacleTiltPreset: function () {
@@ -547,6 +574,43 @@
             lightPosZ: mirroredSourceWorldCenter.z - lightZ,
           });
         },
+        setLightAngleNeg2: function () {
+          applyLightAnglePresetOnXZPlane(-2);
+        },
+        setLightAngleNeg4: function () {
+          applyLightAnglePresetOnXZPlane(-4);
+        },
+        setLightAngle0: function () {
+          applyLightAnglePresetOnXZPlane(0);
+        },
+        setLightAnglePos2: function () {
+          applyLightAnglePresetOnXZPlane(2);
+        },
+        setLightAnglePos4: function () {
+          applyLightAnglePresetOnXZPlane(4);
+        },
+        setLightYTiltAtZNeg50Neg2: function () {
+          applyLightYTiltPresetAtZNeg50(-2);
+        },
+        setLightYTiltAtZNeg50Neg1: function () {
+          applyLightYTiltPresetAtZNeg50(-1);
+        },
+        setLightYTiltAtZNeg50_0: function () {
+          applyLightYTiltPresetAtZNeg50(0);
+        },
+        setLightYTiltAtZNeg50Pos1: function () {
+          applyLightYTiltPresetAtZNeg50(1);
+        },
+        setLightYTiltAtZNeg50Pos2: function () {
+          applyLightYTiltPresetAtZNeg50(2);
+        },
+        runInternalReflexSelfTest: function () {
+          pendingInternalReflexSelfTest = true;
+          requestSimulationRefresh();
+        },
+        setPupilDilated: function () {
+          applyPreset({ pupilType: "dilated" });
+        },
       };
       const presetFolder = gui.addFolder("0) Data Presets");
       presetFolder
@@ -555,6 +619,12 @@
       presetFolder
         .add(presetActions, "alignLensAndLightToCurrentGaze")
         .name("Align Lens/Light To Current Gaze");
+      presetFolder
+        .add(presetActions, "runInternalReflexSelfTest")
+        .name("Run Internal Reflex Self-Test");
+      presetFolder
+        .add(presetActions, "setPupilDilated")
+        .name("Set Pupil: Dilated");
       presetFolder.open();
       const modelFolder = gui.addFolder("1) Model");
       modelFolder.add(uiState, "eyeModel", ["gullstrand", "navarro"]).name("Eye Model").onFinishChange(requestSimulationRefresh);
@@ -598,6 +668,16 @@
       lightFolder.add(uiState, "lightPosZ", -40, 40, 0.1).name("Source Pos Z (mm)").onFinishChange(requestSimulationRefresh);
       lightFolder.add(uiState, "lightTiltX", -45, 45, 0.1).name("Source Tilt X (deg)").onFinishChange(requestSimulationRefresh);
       lightFolder.add(uiState, "lightTiltY", -45, 45, 0.1).name("Source Tilt Y (deg)").onFinishChange(requestSimulationRefresh);
+      lightFolder.add(presetActions, "setLightAngleNeg2").name("Aim @ -2° (z=-50)");
+      lightFolder.add(presetActions, "setLightAngleNeg4").name("Aim @ -4° (z=-50)");
+      lightFolder.add(presetActions, "setLightAngle0").name("Aim @ 0° (z=-50)");
+      lightFolder.add(presetActions, "setLightAnglePos2").name("Aim @ +2° (z=-50)");
+      lightFolder.add(presetActions, "setLightAnglePos4").name("Aim @ +4° (z=-50)");
+      lightFolder.add(presetActions, "setLightYTiltAtZNeg50Neg2").name("Y Tilt -2° @ z=-50");
+      lightFolder.add(presetActions, "setLightYTiltAtZNeg50Neg1").name("Y Tilt -1° @ z=-50");
+      lightFolder.add(presetActions, "setLightYTiltAtZNeg50_0").name("Y Tilt 0° @ z=-50");
+      lightFolder.add(presetActions, "setLightYTiltAtZNeg50Pos1").name("Y Tilt +1° @ z=-50");
+      lightFolder.add(presetActions, "setLightYTiltAtZNeg50Pos2").name("Y Tilt +2° @ z=-50");
 
       const specFolder = gui.addFolder("4) Spectacle Lens");
       specFolder.add(uiState, "spectacleEnabled").name("Insert Spectacle").onFinishChange(requestSimulationRefresh);
@@ -943,6 +1023,16 @@
           .join(" | ");
       }
 
+      function sphericalEquivalentFromMeridians(group) {
+        const meridians = Array.isArray(group) ? group : [];
+        const diopters = meridians
+          .map(function (m) { return Number(m?.d); })
+          .filter(function (d) { return Number.isFinite(d); });
+        if (!diopters.length) return NaN;
+        const sum = diopters.reduce(function (acc, d) { return acc + d; }, 0);
+        return sum / diopters.length;
+      }
+
       /** det([[a,b],[d,e]]) */
       function affineLinearDet(a, b, d, e) {
         return a * e - b * d;
@@ -1021,6 +1111,23 @@
           spectacleP: 0,
           spectaclePAx: 0,
         });
+      }
+
+      function buildEngineEyeConfigFromUiState(state) {
+        // UI keeps clinical refractive-error sign (myopia is minus).
+        // SCAXEngine core internally flips eye S/C when building optical surfaces,
+        // so pass inverted S/C here to keep rendered behavior aligned with clinical intuition.
+        return {
+          s: -Number(state.eyeS),
+          c: -Number(state.eyeC),
+          ax: Number(state.eyeAx),
+          p: Number(state.eyeP),
+          p_ax: Number(state.eyePAx),
+          tilt: {
+            x: Number(state.eyeTiltX),
+            y: Number(state.eyeTiltY),
+          },
+        };
       }
 
       function computeAffineDistortionMetrics(affineCurr, affineRef) {
@@ -1132,7 +1239,11 @@
         const q = getSurfaceQuaternion(pupilStopSurface);
         const qInv = q.clone().invert();
         const planeNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(q).normalize();
-        const pupilRadius = Number(pupilStopSurface?.radius);
+        const pupilRadiusFromSurface = Number(pupilStopSurface?.radius);
+        const pupilRadiusFromState = Number(PUPIL_DIAMETER_MM?.[uiState.pupilType]) / 2;
+        const pupilRadius = (Number.isFinite(pupilRadiusFromSurface) && pupilRadiusFromSurface > 0)
+          ? pupilRadiusFromSurface
+          : pupilRadiusFromState;
         if (!Number.isFinite(pupilRadius) || pupilRadius <= 0) {
           return { pairs: [], affine: null, pupilHits: [] };
         }
@@ -1161,6 +1272,90 @@
           pairs,
           affine: estimateAffineFromPairs(pairs),
           pupilHits,
+        };
+      }
+      function intersectSegmentWithPlane(a, b, planePoint, planeNormal) {
+        if (!a || !b || !planePoint || !planeNormal) return null;
+        const ab = b.clone().sub(a);
+        const denom = ab.dot(planeNormal);
+        if (!Number.isFinite(denom) || Math.abs(denom) < 1e-12) return null;
+        const t = planePoint.clone().sub(a).dot(planeNormal) / denom;
+        if (!Number.isFinite(t) || t < 0 || t > 1) return null;
+        return {
+          t,
+          point: a.clone().addScaledVector(ab, t),
+        };
+      }
+      function buildLensFrontExitScatter(reflectedRays, lensSurfaces) {
+        const flatLens = flattenTraceSurfaces(Array.isArray(lensSurfaces) ? lensSurfaces : [])
+          .filter(function (item) {
+            return item?.surface && Number.isFinite(Number(item.surface?.position?.z));
+          });
+        if (flatLens.length < 2) {
+          return { points: [], frontName: null, backName: null };
+        }
+        const sorted = flatLens.slice().sort(function (a, b) {
+          return Number(a.surface.position.z) - Number(b.surface.position.z);
+        });
+        const front = sorted[0];
+        const back = sorted[sorted.length - 1];
+        const frontSurface = front.surface;
+        const backSurface = back.surface;
+        const frontPlanePoint = new THREE.Vector3(
+          Number(frontSurface?.position?.x) || 0,
+          Number(frontSurface?.position?.y) || 0,
+          Number(frontSurface?.position?.z) || 0,
+        );
+        const frontZ = Number(frontSurface?.position?.z);
+        const backZ = Number(backSurface?.position?.z);
+        if (!Number.isFinite(frontZ) || !Number.isFinite(backZ) || backZ <= frontZ) {
+          return { points: [], frontName: String(front?.name || "lens_front"), backName: String(back?.name || "lens_back") };
+        }
+        const frontQuatInv = getSurfaceQuaternion(frontSurface).invert();
+        const points = [];
+        (Array.isArray(reflectedRays) ? reflectedRays : []).forEach(function (ray) {
+          const rayPoints = getRayPoints(ray).filter(function (p) {
+            return p && Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z);
+          });
+          if (rayPoints.length < 2) return;
+          let insideAfterBack = false;
+          let frontExitLocal = null;
+          for (let i = 0; i < rayPoints.length - 1; i += 1) {
+            const a = rayPoints[i];
+            const b = rayPoints[i + 1];
+            const aInside = a.z >= frontZ && a.z <= backZ;
+            const bInside = b.z >= frontZ && b.z <= backZ;
+            if (!insideAfterBack) {
+              const enterBack =
+                (a.z > backZ && b.z <= backZ) || (a.z <= backZ && b.z > backZ) || (aInside || bInside);
+              if (enterBack) insideAfterBack = true;
+            }
+            if (!insideAfterBack) continue;
+            const crossesFront =
+              (a.z >= frontZ && b.z <= frontZ) || (a.z <= frontZ && b.z >= frontZ);
+            if (crossesFront) {
+              const dz = b.z - a.z;
+              if (Math.abs(dz) < 1e-12) continue;
+              const t = (frontZ - a.z) / dz;
+              if (!Number.isFinite(t) || t < 0 || t > 1) continue;
+              const hit = new THREE.Vector3(
+                a.x + (b.x - a.x) * t,
+                a.y + (b.y - a.y) * t,
+                frontZ,
+              );
+              const local = hit.clone().sub(frontPlanePoint).applyQuaternion(frontQuatInv);
+              if (Number.isFinite(local.x) && Number.isFinite(local.y)) {
+                frontExitLocal = { x: local.x, y: local.y };
+                break;
+              }
+            }
+          }
+          if (frontExitLocal) points.push(frontExitLocal);
+        });
+        return {
+          points,
+          frontName: String(front?.name || "lens_front"),
+          backName: String(back?.name || "lens_back"),
         };
       }
 
@@ -1406,7 +1601,7 @@
               const x = Number(p?.x);
               const y = Number(p?.y);
               if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-              const c = toCanvas(toViewerX(x), y);
+              const c = toCanvas(x, y);
               canvasCtx.beginPath();
               canvasCtx.arc(c.x, c.y, 1.6, 0, 2 * Math.PI);
               canvasCtx.fill();
@@ -1632,17 +1827,7 @@
         const engine = new SCAXEngine({
           eyeModel: uiState.eyeModel,
           pupil_type: uiState.pupilType,
-          eye: {
-            s: uiState.eyeS,
-            c: uiState.eyeC,
-            ax: uiState.eyeAx,
-            p: uiState.eyeP,
-            p_ax: uiState.eyePAx,
-            tilt: {
-              x: uiState.eyeTiltX,
-              y: uiState.eyeTiltY,
-            },
-          },
+          eye: buildEngineEyeConfigFromUiState(uiState),
           lens: lensConfigs,
           light_source: buildLightSourceConfig(uiState),
         });
@@ -1732,14 +1917,7 @@
         const orthoRefEngine = new SCAXEngine({
           eyeModel: orthoRefState.eyeModel,
           pupil_type: orthoRefState.pupilType,
-          eye: {
-            s: orthoRefState.eyeS,
-            c: orthoRefState.eyeC,
-            ax: orthoRefState.eyeAx,
-            p: orthoRefState.eyeP,
-            p_ax: orthoRefState.eyePAx,
-            tilt: { x: orthoRefState.eyeTiltX, y: orthoRefState.eyeTiltY },
-          },
+          eye: buildEngineEyeConfigFromUiState(orthoRefState),
           lens: buildLensConfigs(orthoRefState),
           light_source: buildLightSourceConfig(orthoRefState),
         });
@@ -1748,14 +1926,7 @@
         const eyePrismEngine = new SCAXEngine({
           eyeModel: eyePrismState.eyeModel,
           pupil_type: eyePrismState.pupilType,
-          eye: {
-            s: eyePrismState.eyeS,
-            c: eyePrismState.eyeC,
-            ax: eyePrismState.eyeAx,
-            p: eyePrismState.eyeP,
-            p_ax: eyePrismState.eyePAx,
-            tilt: { x: eyePrismState.eyeTiltX, y: eyePrismState.eyeTiltY },
-          },
+          eye: buildEngineEyeConfigFromUiState(eyePrismState),
           lens: buildLensConfigs(eyePrismState),
           light_source: buildLightSourceConfig(eyePrismState),
         });
@@ -1929,6 +2100,9 @@
           return String(surface?.name || "").toLowerCase() === "pupil_stop";
         }) || null;
         const observerReflex = buildObserverReflexAnalysis(reflectedRays, pupilStopSurface);
+        const lensFrontExitScatter = hasLens
+          ? buildLensFrontExitScatter(reflectedRays, engine.lens || [])
+          : { points: [], frontName: null, backName: null };
         const pupilRadiusMm = (() => {
           const direct = Number(pupilStopSurface?.radius);
           if (Number.isFinite(direct) && direct > 0) return direct;
@@ -1936,25 +2110,95 @@
           return Number.isFinite(dia) && dia > 0 ? dia / 2 : 0;
         })();
         const observerPupilHits = Array.isArray(observerReflex?.pupilHits) ? observerReflex.pupilHits : [];
+        const lensExitPoints = Array.isArray(lensFrontExitScatter?.points) ? lensFrontExitScatter.points : [];
+        const useLensExitScatter = hasLens && lensExitPoints.length > 0;
+        const reflexScatterPoints = useLensExitScatter ? lensExitPoints : observerPupilHits;
+        // Retinoscopy motion 판정은 관찰자 동공면 기준으로 계산해야 임상적 with/against와 부호가 맞다.
+        const motionReferencePoints = observerPupilHits;
         const observerCentroid = (function () {
-          if (!Array.isArray(observerPupilHits) || observerPupilHits.length <= 0) return null;
+          if (!Array.isArray(motionReferencePoints) || motionReferencePoints.length <= 0) return null;
           let sx = 0;
           let sy = 0;
-          observerPupilHits.forEach(function (p) {
+          motionReferencePoints.forEach(function (p) {
             sx += Number(p?.x) || 0;
             sy += Number(p?.y) || 0;
           });
           return {
-            x: sx / observerPupilHits.length,
-            y: sy / observerPupilHits.length,
+            x: sx / motionReferencePoints.length,
+            y: sy / motionReferencePoints.length,
           };
+        })();
+        function calcCentroidForState(state) {
+          const e = new SCAXEngine({
+            eyeModel: state.eyeModel,
+            pupil_type: state.pupilType,
+            eye: buildEngineEyeConfigFromUiState(state),
+            lens: buildLensConfigs(state),
+            light_source: buildLightSourceConfig(state),
+          });
+          try {
+            e.simulate();
+            const rr = Array.isArray(e.traceReflectedRays?.()) ? e.traceReflectedRays() : [];
+            const ps = (e.surfaces || []).find(function (surface) {
+              return String(surface?.name || "").toLowerCase() === "pupil_stop";
+            }) || null;
+            const or = buildObserverReflexAnalysis(rr, ps);
+            const hits = Array.isArray(or?.pupilHits) ? or.pupilHits : [];
+            const radiusFromSurface = Number(ps?.radius);
+            const radiusFromState = Number(PUPIL_DIAMETER_MM?.[state.pupilType]) / 2;
+            const radius = (Number.isFinite(radiusFromSurface) && radiusFromSurface > 0)
+              ? radiusFromSurface
+              : radiusFromState;
+            if (!hits.length) return { x: NaN, count: 0, pupilRadiusMm: radius };
+            let sx = 0;
+            hits.forEach(function (p) { sx += Number(p?.x) || 0; });
+            return { x: sx / hits.length, count: hits.length, pupilRadiusMm: radius };
+          } finally {
+            if (typeof e.dispose === "function") e.dispose();
+          }
+        }
+        const internalReflexSelfTestReport = (function () {
+          if (!pendingInternalReflexSelfTest) return "";
+          pendingInternalReflexSelfTest = false;
+          const baseState = Object.assign({}, uiState);
+          const sweep = [-2, -1, 0, 1, 2];
+          const points = sweep.map(function (x) {
+            const s = Object.assign({}, baseState, { lightPosX: x });
+            const c = calcCentroidForState(s);
+            return { x, cx: c.x, n: c.count, pupilRadiusMm: c.pupilRadiusMm };
+          });
+          const deltas = [];
+          for (let i = 1; i < points.length; i += 1) {
+            const a = points[i - 1];
+            const b = points[i];
+            const dx = toViewerX(b.cx - a.cx);
+            const label = !Number.isFinite(dx) ? "n/a" : (dx > 0 ? "with-ish(+)" : (dx < 0 ? "against-ish(-)" : "neutral"));
+            deltas.push("  " + a.x + "->" + b.x + ": dx=" + toFixedOrNa(dx, 6) + " (" + label + ")");
+          }
+          const lines = [
+            "[internal reflex self-test]",
+            "pupilType=" + String(baseState.pupilType) + ", expected pupil radius(mm)="
+              + toFixedOrNa(Number(PUPIL_DIAMETER_MM[baseState.pupilType]) / 2, 4),
+            "lightPosX sweep @ current config: " + sweep.join(", "),
+            ...points.map(function (p) {
+              return "  x=" + p.x
+                + " : centroidX(viewer)=" + toFixedOrNa(toViewerX(p.cx), 6)
+                + ", hits=" + p.n
+                + ", pupilRadius=" + toFixedOrNa(p.pupilRadiusMm, 4);
+            }),
+            "adjacent centroid dx(viewer):",
+            ...deltas,
+          ];
+          const text = lines.join("\n");
+          console.log(text);
+          return text + "\n";
         })();
         const currentLightPosX = Number(uiState.lightPosX);
         const prevLightPosX = motionDebugState.prevLightPosX;
         const prevCentroid = motionDebugState.prevCentroid;
         let motionSweepDx = null;
         let motionCentroidDx = null;
-        let motionDebugLabel = "insufficient-data";
+        let motionMeasuredLabel = "insufficient-data";
         if (
           Number.isFinite(currentLightPosX)
           && Number.isFinite(prevLightPosX)
@@ -1968,12 +2212,55 @@
           motionCentroidDx = toViewerX(rawCentroidDx);
           const eps = 1e-6;
           if (Math.abs(motionSweepDx) < eps || Math.abs(motionCentroidDx) < eps) {
-            motionDebugLabel = "neutral/undetermined";
+            motionMeasuredLabel = "neutral/undetermined";
           } else {
             const dot = motionSweepDx * motionCentroidDx;
-            motionDebugLabel = dot > 0 ? "with-motion" : "against-motion";
+            motionMeasuredLabel = dot < 0 ? "with-motion" : "against-motion";
           }
         }
+        // Automatic ray-tracing based motion judgement at current state:
+        // use retinoscopy-like angular sweep (lightTiltY), not pure source translation.
+        const motionAutoDeltaTiltDeg = 0.5;
+        const currentLightTiltY = Number(uiState.lightTiltY);
+        const autoLeft = calcCentroidForState(Object.assign({}, uiState, {
+          lightTiltY: currentLightTiltY - motionAutoDeltaTiltDeg,
+        }));
+        const autoRight = calcCentroidForState(Object.assign({}, uiState, {
+          lightTiltY: currentLightTiltY + motionAutoDeltaTiltDeg,
+        }));
+        const motionAutoCentroidDx = toViewerX((autoRight?.x ?? NaN) - (autoLeft?.x ?? NaN));
+        const motionAutoMinHits = Math.min(Number(autoLeft?.count || 0), Number(autoRight?.count || 0));
+        const motionAutoLabel = !Number.isFinite(motionAutoCentroidDx)
+          ? "insufficient-data"
+          : (motionAutoMinHits < 4
+            ? "insufficient-data (low hits)"
+            : (Math.abs(motionAutoCentroidDx) < 1e-6
+              ? "neutral/undetermined"
+              : (motionAutoCentroidDx > 0 ? "with-motion" : "against-motion")));
+        // Deterministic paraxial retinoscopy judgement in user-facing Rx sign convention:
+        // residual = (eye SE + lens SE) - working-distance vergence.
+        const eyeSeD = Number(uiState.eyeS) + (Number(uiState.eyeC) / 2);
+        const lensSeD = Number(uiState.spectacleS) + (Number(uiState.spectacleC) / 2);
+        const workingVergenceD = Number(uiState.lightVergence);
+        const combinedGroup = Array.isArray(astigmatismInfo?.combined) ? astigmatismInfo.combined[0] : null;
+        const combinedSeEngineD = sphericalEquivalentFromMeridians(combinedGroup);
+        const paraxialResidualD = eyeSeD + lensSeD - workingVergenceD;
+        const paraxialResidualEngineD = Number.isFinite(combinedSeEngineD)
+          ? (combinedSeEngineD - workingVergenceD)
+          : NaN;
+        // Final motion judgement uses SE-based residual from engine first.
+        const motionResidualForLabel = Number.isFinite(paraxialResidualEngineD)
+          ? paraxialResidualEngineD
+          : paraxialResidualD;
+        const motionDebugLabel = !Number.isFinite(motionResidualForLabel)
+          ? "insufficient-data"
+          : (Math.abs(motionResidualForLabel) < 0.25
+            ? "neutral/undetermined"
+            : (motionResidualForLabel > 0 ? "with-motion" : "against-motion"));
+        // Final label: prefer ray-tracing motion when valid, fallback to SE-based.
+        const motionFinalLabel = String(motionAutoLabel).startsWith("insufficient-data")
+          ? motionDebugLabel
+          : motionAutoLabel;
         motionDebugState.prevLightPosX = Number.isFinite(currentLightPosX) ? currentLightPosX : null;
         motionDebugState.prevCentroid = observerCentroid
           ? { x: observerCentroid.x, y: observerCentroid.y }
@@ -2214,6 +2501,7 @@
         hud.textContent =
         "SCAX UMD Mesh Render Test\n" +
         "module: SCAXEngine from dist/scax-engine.js (cache-busted each load)\n" +
+        internalReflexSelfTestReport +
         "config: model=" + uiState.eyeModel +
         ", pupil=" + uiState.pupilType +
         ", pupilDisk=" + (uiState.showPupilDisk ? "show" : "hide") +
@@ -2239,9 +2527,18 @@
             ? (toFixedOrNa(toViewerX(observerCentroid.x), 4) + ", " + toFixedOrNa(observerCentroid.y, 4))
             : "none")
           + "\n" +
+        "effective SE (input Rx): " + toFixedOrNa(eyeSeD + lensSeD, 4) + " D\n" +
+        "effective SE (engine): " + toFixedOrNa(combinedSeEngineD, 4) + " D\n" +
+        "paraxial residual D (SE-V): " + toFixedOrNa(paraxialResidualD, 4) + "\n" +
+        "paraxial residual D (engine SE-V): " + toFixedOrNa(paraxialResidualEngineD, 4) + "\n" +
+        "motion residual used (SE-V): " + toFixedOrNa(motionResidualForLabel, 4) + "\n" +
         "motion sweep dx (viewer-X): " + toFixedOrNa(motionSweepDx, 6) + "\n" +
         "motion centroid dx (viewer-X): " + toFixedOrNa(motionCentroidDx, 6) + "\n" +
-        "motion debug: " + motionDebugLabel + "\n" +
+        "motion measured: " + motionMeasuredLabel + "\n" +
+        "motion auto dx (viewer, tiltY ±0.5deg): " + toFixedOrNa(motionAutoCentroidDx, 6) + "\n" +
+        "motion auto hits min(L/R): " + motionAutoMinHits + "\n" +
+        "motion debug: " + motionDebugLabel + " (SE-based)\n" +
+        "motion final: " + motionFinalLabel + " (raytrace-priority)\n" +
         "source points(rendered): " + sourcePointCount + "\n" +
         "source direction arrows: " + sourceDirectionArrowCount + "\n" +
         "ray segments: " + raySegmentCount + "\n" +
@@ -2307,9 +2604,15 @@
           affineMeta.textContent =
             "current pairs: " + affineResult.count + "\n" +
             "observer reflex pairs: " + (observerReflex?.pairs?.length || 0) + "\n" +
-            "observer pupil hits: " + observerPupilHits.length + "\n" +
-            "observer plane: pupil_stop\n" +
-            "observer affine: " + (observerReflex?.affine ? "available" : "unavailable (<4 pairs)") + "\n" +
+            (useLensExitScatter
+              ? ("lens back→front exits: " + reflexScatterPoints.length + "\n")
+              : ("observer pupil hits: " + reflexScatterPoints.length + "\n")) +
+            "observer plane: " + (useLensExitScatter
+              ? String(lensFrontExitScatter?.frontName || "lens_front")
+              : "pupil_stop") + "\n" +
+            "observer affine: " + (useLensExitScatter
+              ? "n/a (lens exit scatter mode)"
+              : (observerReflex?.affine ? "available" : "unavailable (<4 pairs)")) + "\n" +
             distBlock +
             "[x'; y'] = [[a b c], [d e f]] [x y 1]^T (현재)\n" +
             "a=" + toFixedOrNa(affineResult.a, 6) +
@@ -2333,10 +2636,12 @@
           { title: "2) 정시(eye only)", affine: affineResultOrtho },
           { title: "3) 눈 굴절(프리즘 반영)", affine: affineResultEyeOnly },
           {
-            title: "4) Observer Pupil Hits (분포 반사)",
+            title: useLensExitScatter
+              ? "4) Lens Back->Front Exit (분포 반사)"
+              : "4) Observer Pupil Hits (분포 반사)",
             scatterOnly: true,
-            pupilRadiusMm: pupilRadiusMm,
-            points: observerPupilHits,
+            pupilRadiusMm: useLensExitScatter ? 0 : pupilRadiusMm,
+            points: reflexScatterPoints,
           },
         ]);
         if (typeof eyePrismEngine?.dispose === "function") eyePrismEngine.dispose();
