@@ -123,9 +123,9 @@ const next = engine.simulate();
     traced_rays: Ray[];
     info: {
       astigmatism: {
-        eye: { tabo_deg: number; d: number | null };
-        lens: Array<{ name: string; type: string; tabo_deg: number; d: number | null }>;
-        combined: { tabo_deg: number; d: number | null };
+        eye: Array<{ tabo: number; d: number }>;
+        lens: Array<Array<{ tabo: number; d: number }>>;
+        combined: Array<{ tabo: number; d: number }>;
       };
       prism: {
         eye: { p_x: number; p_y: number; prism_angle: number; magnitude: number | null };
