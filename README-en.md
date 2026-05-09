@@ -1,6 +1,6 @@
 # scax-engine
 
-A TypeScript ophthalmic optics simulation library (monocular, OD baseline) that provides ray tracing for eye models (Gullstrand / Navarro), Sturm interval analysis, affine distortion estimation, and induced astigmatism / prism deviation calculations. Supports ESM, CJS, and UMD builds.
+A TypeScript ophthalmic optics simulation library (monocular, OD baseline) that provides ray tracing for eye models (Gullstrand / Navarro), Sturm interval analysis, and induced astigmatism / prism deviation calculations. Supports ESM, CJS, and UMD builds.
 
 
 Korean documentation: [README.md](README.md)
@@ -67,7 +67,7 @@ const next = engine.simulate();
 
 ### `new SCAXEngine(props?)`
 
-Creates a simulation engine instance. Internal `Sturm` and `Affine` helpers are created once per instance.
+Creates a simulation engine instance. The internal `Sturm` helper is created once per instance.
 
 #### `props`
 
@@ -101,13 +101,13 @@ The same `props` rules apply to `update()`. If you pass a partial object, omitte
 
 Re-runs the same configuration path as the constructor: rebuilds eye, lens, surfaces, and light source from `props`.
 
-- `Sturm` and `Affine` instances are not recreated, but cached Sturm / affine results are cleared until you run `simulate` (or equivalent) again.
+- The `Sturm` instance is not recreated, but cached Sturm results are cleared until you run `simulate` (or equivalent) again.
 
 ### `engine.dispose()`
 
 Releases per-instance tracing/analysis caches and per-surface trace history.
 
-- Clears traced rays, cached Sturm/affine results, and surface incident/refracted history.
+- Clears traced rays, cached Sturm results, and surface incident/refracted history.
 - In UI flows that create engines frequently (e.g., continuous slider updates), call `dispose()` on stale instances to keep memory usage stable.
 
 ### Instance methods
@@ -150,7 +150,6 @@ Releases per-instance tracing/analysis caches and per-surface trace history.
 
 - `sturmCalculation(rays?)` — computes Sturm slices and per–Fraunhofer-line summaries for the given rays (defaults to the last `rayTracing` / `simulate` output). `simulate()` already refreshes Sturm internally.
 
-- `getAffineAnalysis()` — builds retina correspondence pairs for the current setup, fits an affine map (or returns cache). May be `null` when there are not enough valid pairs.
 
 ## UMD
 

@@ -46,6 +46,7 @@
       overflow-y: auto;
       max-height: min(88vh, 900px);
     }
+    /* Affine panel is temporarily hidden until public review/release.
     #affine-panel {
       position: absolute;
       left: 12px;
@@ -76,12 +77,13 @@
     #affine-meta {
       white-space: pre-line;
     }
+    */
   </style>
 </head>
 <body>
   <div id="app">
     <div id="hud">Loading...</div>
-    <div id="affine-panel">Affine: Loading...</div>
+    <!-- <div id="affine-panel">Affine: Loading...</div> -->
   </div>
 
   <!-- Engine: ESM from dist/ — each load uses a fresh query so the browser cannot serve a stale cached bundle. -->
@@ -96,13 +98,13 @@
 
     (function () {
       const hud = document.getElementById("hud");
-      const affinePanel = document.getElementById("affine-panel");
       const app = document.getElementById("app");
 
-      if (!THREE || !SCAXEngine || !affinePanel) {
+      if (!THREE || !SCAXEngine) {
         if (hud) hud.textContent = "Failed to load THREE or SCAXEngine (check dist/ after npm run build).";
         return;
       }
+      /*
       affinePanel.innerHTML =
         '<div id="affine-title">Affine Distortion (Current)</div>' +
         '<canvas id="affine-canvas" width="420" height="340"></canvas>' +
@@ -118,6 +120,7 @@
         hud.textContent = "Failed to initialize affine canvas.";
         return;
       }
+      */
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x0f172a);
 
@@ -1474,6 +1477,13 @@
         const tracedRays = Array.isArray(simulationResult?.traced_rays)
           ? simulationResult.traced_rays
           : [];
+<<<<<<< Updated upstream
+=======
+        const reflectedRays = uiState.showReflectedRays
+          ? (Array.isArray(engine.traceReflectedRays?.()) ? engine.traceReflectedRays() : [])
+          : [];
+        /*
+>>>>>>> Stashed changes
         const affinePairCount = tracedRays
           .map(function (ray) {
             const points = getRayPoints(ray);
@@ -1524,6 +1534,7 @@
         eyePrismEngine.simulate();
         const affineResultEyeOnly = eyePrismEngine.getAffineAnalysis();
         const affineDistortionMetrics = computeAffineDistortionMetrics(affineResult, affineResultOrtho);
+        */
         const sturmResult = engine.sturmCalculation(tracedRays);
         console.log("STURM RESULT : ", sturmResult);
         const sturmInfo = Array.isArray(sturmResult?.sturm_info) ? sturmResult.sturm_info : [];
@@ -1945,6 +1956,7 @@
         sturmHudJson +
         "\n======== /STURM ========";
 
+        /*
         if (!affineResult) {
           affineMeta.textContent =
             "status: unavailable\n" +
@@ -1994,8 +2006,9 @@
           { title: "3) 눈 굴절(프리즘 반영)", affine: affineResultEyeOnly },
           { title: "4) 안경 + 눈", affine: affineResult },
         ]);
-        if (typeof eyePrismEngine?.dispose === "function") eyePrismEngine.dispose();
-        if (typeof orthoRefEngine?.dispose === "function") orthoRefEngine.dispose();
+        */
+        // if (typeof eyePrismEngine?.dispose === "function") eyePrismEngine.dispose();
+        // if (typeof orthoRefEngine?.dispose === "function") orthoRefEngine.dispose();
         if (typeof engine?.dispose === "function") engine.dispose();
       }
       runSimulationAndRender();

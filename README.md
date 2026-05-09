@@ -1,6 +1,6 @@
 # scax-engine
 
-눈 모델(Gullstrand / Navarro)에 대한 광선 추적, Sturm 간격 분석, 아핀 왜곡 추정, 유발 난시·프리즘 편위 계산을 제공하는 TypeScript 안경광학 시뮬레이션(단안 기준, OD) 라이브러리입니다. ESM, CJS, UMD 빌드를 지원합니다.
+눈 모델(Gullstrand / Navarro)에 대한 광선 추적, Sturm 간격 분석, 유발 난시·프리즘 편위 계산을 제공하는 TypeScript 안경광학 시뮬레이션(단안 기준, OD) 라이브러리입니다. ESM, CJS, UMD 빌드를 지원합니다.
 
 
 English documentation: [README-en.md](README-en.md)
@@ -69,7 +69,7 @@ const next = engine.simulate();
 
 ### `new SCAXEngine(props?)`
 
-시뮬레이션 엔진 인스턴스를 생성합니다. 내부 `Sturm`, `Affine` 헬퍼는 인스턴스당 한 번만 생성됩니다.
+시뮬레이션 엔진 인스턴스를 생성합니다. 내부 `Sturm` 헬퍼는 인스턴스당 한 번만 생성됩니다.
 
 #### `props`
 
@@ -103,13 +103,13 @@ const next = engine.simulate();
 
 생성자와 동일한 설정 경로를 다시 실행합니다. `props`를 기준으로 eye / lens / 표면 / 광원을 재구성하며, 생략된 키에는 위 기본값이 적용됩니다.
 
-- `Sturm`, `Affine` 인스턴스는 재생성되지 않지만, `update` 직후에는 Sturm·affine 분석 캐시가 비워지며 `simulate` 등으로 다시 채워집니다.
+- `Sturm` 인스턴스는 재생성되지 않지만, `update` 직후에는 Sturm 분석 캐시가 비워지며 `simulate` 등으로 다시 채워집니다.
 
 ### `engine.dispose()`
 
 엔진 인스턴스가 잡고 있던 추적/분석 캐시와 표면 trace history를 정리합니다.
 
-- 해제 대상: traced rays, Sturm/affine 캐시, surface incident/refracted history
+- 해제 대상: traced rays, Sturm 캐시, surface incident/refracted history
 - UI에서 엔진을 자주 새로 만들 때(예: 프레임별/슬라이더 연속 갱신) 이전 인스턴스에 `dispose()`를 호출하면 메모리 사용량을 안정적으로 유지할 수 있습니다.
 
 ### 인스턴스 메서드
@@ -152,7 +152,6 @@ const next = engine.simulate();
 
 - `sturmCalculation(rays?)` — 추적 광선(인자 생략 시 마지막 `rayTracing`/`simulate` 결과)으로 Sturm 슬라이스·스펙트럼선별 분석 객체를 계산해 반환합니다. `simulate()` 호출 시 내부에서 Sturm도 갱신됩니다.
 
-- `getAffineAnalysis()` — 현재 설정으로 망막 대응점 쌍을 만들어 아핀 적합을 수행(또는 캐시 재사용)합니다. 유효한 쌍이 부족하면 `null`이 될 수 있습니다.
 
 ## UMD
 

@@ -121,7 +121,7 @@ export type AffineAnalysisResult = ReturnType<Affine["estimate"]>;
  * legacy simulator.js를 TypeScript로 옮긴 핵심 시뮬레이터입니다.
  * - 광원 광선을 생성하고
  * - 표면들을 순서대로 통과시키며 굴절을 계산한 뒤
- * - 망막 대응쌍, Sturm 분석, 왜곡(affine) 분석까지 제공합니다.
+ * - Sturm 분석까지 제공합니다.
  */
 export class SCAXEngineCore {
   private static readonly EYE_ROTATION_PIVOT_FROM_CORNEA_MM = 13;
@@ -522,21 +522,8 @@ export class SCAXEngineCore {
     return this.lastSturmGapAnalysis;
   }
 
-  /**
-   * 3) Affine 왜곡 추정 전용 함수
-   * 광선 대응쌍(sx,sy)->(tx,ty)에 대해 최소자승 2D affine을 적합합니다.
-   */
-  private estimateAffineDistortion(pairs: AffinePair[]) {
-    const inputPairs = Array.isArray(pairs) ? pairs : [];
-    this.lastAffineAnalysis = this.affine.estimate(inputPairs);
-    return this.lastAffineAnalysis;
-  }
-
-  /**
-   * 현재 eye+lens 설정 기준 affine 왜곡 결과를 반환합니다.
-   * traced ray/affine 결과는 기존 계산값을 우선 재사용합니다.
-   */
   public getAffineAnalysis(): AffineAnalysisResult {
+    /*
     if (!this.tracedRays.length) {
       this.simulate();
     }
@@ -544,6 +531,9 @@ export class SCAXEngineCore {
       this.lastAffineAnalysis = this.estimateAffineDistortion(this.createAffinePairs(this.tracedRays));
     }
     return this.lastAffineAnalysis;
+    */
+    // Affine analysis is intentionally disabled for now.
+    return null;
   }
 
   private surfaceOrderZ(surface: Surface) {
@@ -825,6 +815,14 @@ export class SCAXEngineCore {
     return 2 * Math.hypot(j0, j45);
   }
 
+  // Kept for later review/release.
+  private estimateAffineDistortion(pairs: AffinePair[]) {
+    const inputPairs = Array.isArray(pairs) ? pairs : [];
+    this.lastAffineAnalysis = this.affine.estimate(inputPairs);
+    return this.lastAffineAnalysis;
+  }
+
+  // Kept for later review/release.
   private createAffinePairs(rays: Ray[]): AffinePair[] {
     return (Array.isArray(rays) ? rays : [])
       .map((ray) => {
