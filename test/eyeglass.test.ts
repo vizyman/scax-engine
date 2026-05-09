@@ -216,7 +216,7 @@ describe("안경 렌즈 동작", () => {
       [createLensSpec({ s: 0, c: +1.0, ax: 90 })],
     );
     const result = simulator.simulate();
-    const combined = result.info.astigmatism.combined[0] ?? [];
+    const combined = result.info.astigmatism.combined;
     expect(combined.length).toBe(2);
     expect(Number.isFinite(combined[0]?.d)).toBe(true);
     expect(Number.isFinite(combined[1]?.d)).toBe(true);

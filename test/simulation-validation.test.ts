@@ -104,7 +104,7 @@ describe("시뮬레이션 품질 검증 세트", () => {
   it("난시 축 180도 주기성(axis, axis+180)에서 simulate 난시 요약이 동일하다", () => {
     const base = createEngine("gullstrand", { s: 0, c: -1.75, ax: 25 }).simulate();
     const wrapped = createEngine("gullstrand", { s: 0, c: -1.75, ax: 205 }).simulate();
-    expect(base.info.astigmatism.combined[0]).toEqual(wrapped.info.astigmatism.combined[0]);
+    expect(base.info.astigmatism.combined).toEqual(wrapped.info.astigmatism.combined);
   });
 
   it("동일 입력 반복 실행 시 광선 수와 초점 위치가 안정적으로 재현된다", () => {
@@ -139,7 +139,7 @@ describe("시뮬레이션 품질 검증 세트", () => {
       const engine = createEngine(model, eye, lens);
       const centerZ = extractDLineCenterZ(engine);
       expect(Number.isFinite(centerZ)).toBe(true);
-      const combinedMeridians = engine.simulate().info.astigmatism.combined[0] ?? [];
+      const combinedMeridians = engine.simulate().info.astigmatism.combined;
       expect(Array.isArray(combinedMeridians)).toBe(true);
       expect(combinedMeridians.length).toBe(2);
       expect(Number.isFinite(combinedMeridians[0]?.d)).toBe(true);

@@ -15,8 +15,6 @@ describe("SCAXEngine", () => {
       expect(result.info).toHaveProperty("prism");
       expect(Array.isArray(result.info.astigmatism.eye)).toBe(true);
       expect(Array.isArray(result.info.astigmatism.combined)).toBe(true);
-      expect(Array.isArray(result.info.astigmatism.eye[0])).toBe(true);
-      expect(Array.isArray(result.info.astigmatism.combined[0])).toBe(true);
     });
 
     it("eye/combined 난시 요약에 양주경선 배열이 포함된다", () => {
@@ -32,9 +30,9 @@ describe("SCAXEngine", () => {
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
       const result = simulator.simulate();
-      expect(result.info.astigmatism.eye.length).toBe(1);
-      expect(result.info.astigmatism.combined.length).toBe(1);
-      const [weak, strong] = result.info.astigmatism.combined[0];
+      expect(result.info.astigmatism.eye.length).toBe(2);
+      expect(result.info.astigmatism.combined.length).toBe(2);
+      const [weak, strong] = result.info.astigmatism.combined;
       expect(Number.isFinite(weak.d)).toBe(true);
       expect(Number.isFinite(strong.d)).toBe(true);
       expect(weak.d).toBeLessThanOrEqual(strong.d);
