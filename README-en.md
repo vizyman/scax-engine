@@ -122,7 +122,7 @@ Releases per-instance tracing/analysis caches and per-surface trace history.
     info: {
       astigmatism: {
         eye: Array<{ tabo: number; d: number }>;
-        lens: Array<Array<{ tabo: number; d: number }>>;
+        lens: Array<{ tabo: number; d: number }>;
         combined: Array<{ tabo: number; d: number }>;
       };
       prism: {

@@ -124,7 +124,7 @@ const next = engine.simulate();
     info: {
       astigmatism: {
         eye: Array<{ tabo: number; d: number }>;
-        lens: Array<Array<{ tabo: number; d: number }>>;
+        lens: Array<{ tabo: number; d: number }>;
         combined: Array<{ tabo: number; d: number }>;
       };
       prism: {

@@ -105,7 +105,7 @@ export type PrismSummaryItem = {
 export type SimulationResultInfo = {
   astigmatism: {
     eye: AstigmatismSummaryItem;
-    lens: AstigmatismSummaryItem[];
+    lens: AstigmatismSummaryItem;
     combined: AstigmatismSummaryItem;
   };
   prism: {
@@ -383,7 +383,7 @@ export class SCAXEngineCore {
       info: {
         astigmatism: {
           eye: this.principalMeridiansFromPowers([this.eyePower]),
-          lens: this.lensPowers.map((power) => this.principalMeridiansFromPowers([power])),
+          lens: this.principalMeridiansFromPowers(this.lensPowers),
           combined: this.principalMeridiansFromPowers([this.eyePower, ...this.lensPowers]),
         },
         prism: {

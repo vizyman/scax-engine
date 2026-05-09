@@ -54,7 +54,7 @@ describe("Cross cylinder (JCC) vs phoropter UI prescription", () => {
       light_source: { type: "grid", width: 4, height: 4, division: 4, z: -20, vergence: 0 },
     });
 
-    const summary = engine.simulate().info.astigmatism.lens[0] ?? [];
+    const summary = engine.simulate().info.astigmatism.lens;
     expect(summary.length).toBe(2);
     const lensCylinderMagnitude = Math.abs(summary[1]!.d - summary[0]!.d);
     expect(lensCylinderMagnitude).toBeCloseTo(Math.abs(PHOROPTER_UI_CROSS_CYLINDER_LENS.c), 10);
