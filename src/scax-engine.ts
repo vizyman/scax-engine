@@ -49,6 +49,12 @@ export type LensConfig = {
   p_ax?: number;
   position: { x: number; y: number; z: number };
   tilt: { x: number; y: number };
+  /**
+   * false이면 `simulate().info.astigmatism`의 `lens`·`combined` 파워 벡터 합에서 이 항목을 빼고,
+   * 광선 추적·프리즘·Sturm 등은 그대로 적용합니다. (예: 시험용 JCC/크로스실린더)
+   * @default true
+   */
+  includeInAstigmatismSummary?: boolean;
 };
 
 export type EyeConfig = {
@@ -262,6 +268,7 @@ export class SCAXEngineCore {
         x: this.toFiniteNumber(spec?.tilt?.x),
         y: this.toFiniteNumber(spec?.tilt?.y),
       },
+      includeInAstigmatismSummary: spec?.includeInAstigmatismSummary !== false,
     }));
     this.currentProps = {
       eyeModel,
@@ -288,6 +295,7 @@ export class SCAXEngineCore {
           x: this.toFiniteNumber(spec.tilt?.x),
           y: this.toFiniteNumber(spec.tilt?.y),
         },
+        includeInAstigmatismSummary: spec.includeInAstigmatismSummary,
       })),
       light_source: {
         ...light_source,
@@ -383,8 +391,11 @@ export class SCAXEngineCore {
       info: {
         astigmatism: {
           eye: this.principalMeridiansFromPowers([this.eyePower]),
-          lens: this.principalMeridiansFromPowers(this.lensPowers),
-          combined: this.principalMeridiansFromPowers([this.eyePower, ...this.lensPowers]),
+          lens: this.principalMeridiansFromPowers(this.astigmatismSummaryLensPowers()),
+          combined: this.principalMeridiansFromPowers([
+            this.eyePower,
+            ...this.astigmatismSummaryLensPowers(),
+          ]),
         },
         prism: {
           eye: this.toPrismSummaryItem(lightDeviation.eye_prism_effect),
@@ -608,7 +619,18 @@ export class SCAXEngineCore {
     return meridians.sort((a, b) => a.d - b.d);
   }
 
+  private astigmatismSummaryLensPowers(): SCAxPower[] {
+    return this.lensConfigs
+      .filter((spec) => spec.includeInAstigmatismSummary)
+      .map((spec) => ({
+        s: this.toFiniteNumber(spec.s),
+        c: this.toFiniteNumber(spec.c),
+        ax: this.toFiniteNumber(spec.ax),
+      }));
+  }
+
   private principalMeridiansFromPowers(powers: SCAxPower[]): AstigmatismSummaryItem {
+    if (powers.length === 0) return [];
     const { m, j0, j45 } = this.aggregatePowerVector(powers);
     return this.principalMeridiansFromVector(m, j0, j45);
   }

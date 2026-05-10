@@ -60,6 +60,32 @@ describe("Cross cylinder (JCC) vs phoropter UI prescription", () => {
     expect(lensCylinderMagnitude).toBeCloseTo(Math.abs(PHOROPTER_UI_CROSS_CYLINDER_LENS.c), 10);
   });
 
+  it("includeInAstigmatismSummary:false 인 시험 실린더는 astigmatism.lens·combined 요약에서 빠진다", () => {
+    const rxLens = {
+      s: -1,
+      c: -0.5,
+      ax: 90,
+      position: { x: 0, y: 0, z: -12 },
+      tilt: { x: 0, y: 0 },
+    } as const;
+    const withXcyl = new SCAXEngine({
+      eyeModel: "gullstrand",
+      eye: { s: 0, c: 0, ax: 0 },
+      lens: [{ ...PHOROPTER_UI_CROSS_CYLINDER_LENS, includeInAstigmatismSummary: false }, { ...rxLens }],
+      light_source: { type: "grid", width: 4, height: 4, division: 4, z: -20, vergence: 0 },
+    });
+    const rxOnly = new SCAXEngine({
+      eyeModel: "gullstrand",
+      eye: { s: 0, c: 0, ax: 0 },
+      lens: [{ ...rxLens }],
+      light_source: { type: "grid", width: 4, height: 4, division: 4, z: -20, vergence: 0 },
+    });
+    const a = withXcyl.simulate().info.astigmatism;
+    const b = rxOnly.simulate().info.astigmatism;
+    expect(a.lens).toEqual(b.lens);
+    expect(a.combined).toEqual(b.combined);
+  });
+
   it("프리즘 렌즈와 함께일 때 카니널 TABO 축에서도 Sturm이 선초점 전·후를 반환한다", () => {
     const prismLens = {
       s: 0,
