@@ -60,7 +60,7 @@ describe("Cross cylinder (JCC) vs phoropter UI prescription", () => {
     expect(lensCylinderMagnitude).toBeCloseTo(Math.abs(PHOROPTER_UI_CROSS_CYLINDER_LENS.c), 10);
   });
 
-  it("includeInAstigmatismSummary:false 인 시험 실린더는 astigmatism.lens·combined 요약에서 빠진다", () => {
+  it("includeInAstigmatismSummary:false 인 시험 실린더는 eye/lens는 유지되고 combined에만 반영된다", () => {
     const rxLens = {
       s: -1,
       c: -0.5,
@@ -82,8 +82,9 @@ describe("Cross cylinder (JCC) vs phoropter UI prescription", () => {
     });
     const a = withXcyl.simulate().info.astigmatism;
     const b = rxOnly.simulate().info.astigmatism;
+    expect(a.eye).toEqual(b.eye);
     expect(a.lens).toEqual(b.lens);
-    expect(a.combined).toEqual(b.combined);
+    expect(a.combined).not.toEqual(b.combined);
   });
 
   it("프리즘 렌즈와 함께일 때 카니널 TABO 축에서도 Sturm이 선초점 전·후를 반환한다", () => {

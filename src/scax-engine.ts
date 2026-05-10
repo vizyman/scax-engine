@@ -394,7 +394,7 @@ export class SCAXEngineCore {
           lens: this.principalMeridiansFromPowers(this.astigmatismSummaryLensPowers()),
           combined: this.principalMeridiansFromPowers([
             this.eyePower,
-            ...this.astigmatismSummaryLensPowers(),
+            ...this.lensPowers,
           ]),
         },
         prism: {
