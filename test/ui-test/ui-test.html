@@ -29,23 +29,6 @@
       width: 100%;
       height: 100%;
     }
-    #hud {
-      position: absolute;
-      top: 12px;
-      left: 12px;
-      z-index: 5;
-      background: rgba(17, 24, 39, 0.85);
-      border: 1px solid #374151;
-      border-radius: 8px;
-      padding: 10px 12px;
-      font-size: 12px;
-      line-height: 1.4;
-      max-width: 420px;
-      white-space: pre-wrap;
-      word-break: break-word;
-      overflow-y: auto;
-      max-height: min(88vh, 900px);
-    }
     /* Affine panel is temporarily hidden until public review/release.
     #affine-panel {
       position: absolute;
@@ -82,7 +65,6 @@
 </head>
 <body>
   <div id="app">
-    <div id="hud">Loading...</div>
     <!-- <div id="affine-panel">Affine: Loading...</div> -->
   </div>
 
@@ -97,11 +79,10 @@
     );
 
     (function () {
-      const hud = document.getElementById("hud");
       const app = document.getElementById("app");
 
       if (!THREE || !SCAXEngine) {
-        if (hud) hud.textContent = "Failed to load THREE or SCAXEngine (check dist/ after npm run build).";
+        console.error("Failed to load THREE or SCAXEngine (check dist/ after npm run build).");
         return;
       }
       /*
@@ -112,12 +93,12 @@
       const affineCanvas = document.getElementById("affine-canvas");
       const affineMeta = document.getElementById("affine-meta");
       if (!affineCanvas || !affineMeta) {
-        hud.textContent = "Failed to initialize affine panel.";
+        console.error("Failed to initialize affine panel.");
         return;
       }
       const affineCtx = affineCanvas.getContext("2d");
       if (!affineCtx) {
-        hud.textContent = "Failed to initialize affine canvas.";
+        console.error("Failed to initialize affine canvas.");
         return;
       }
       */
@@ -907,26 +888,6 @@
         return Number.isFinite(Number(value)) ? Number(value).toExponential(digits) : "NaN";
       }
 
-      function formatAstigmatismMeridianArray(items) {
-        const meridians = Array.isArray(items) ? items : [];
-        if (!meridians.length) return "none";
-        return meridians
-          .map(function (m) {
-            return "(" + toFixedOrNa(m?.tabo, 2) + "°, " + toFixedOrNa(m?.d, 4) + "D)";
-          })
-          .join(", ");
-      }
-
-      function formatAstigmatismSummaryGroups(items) {
-        const groups = Array.isArray(items) ? items : [];
-        if (!groups.length) return "none";
-        return groups
-          .map(function (group, index) {
-            return "#" + (index + 1) + ": [" + formatAstigmatismMeridianArray(group) + "]";
-          })
-          .join(" | ");
-      }
-
       /** det([[a,b],[d,e]]) */
       function affineLinearDet(a, b, d, e) {
         return a * e - b * d;
@@ -1227,112 +1188,6 @@
       }
 
 
-      function flattenTraceSurfaces(compoundAwareSurfaces) {
-        const list = [];
-        (compoundAwareSurfaces || []).forEach(function (surface, index) {
-          if (!surface) return;
-          const name = String(surface?.name || ("surface_" + index));
-          if (String(surface?.type || "").toLowerCase() === "compound") {
-            if (surface.toricSurface) list.push({ surface: surface.toricSurface, name: name + "_toric" });
-            if (surface.sphericalSurface) list.push({ surface: surface.sphericalSurface, name: name + "_spherical" });
-          } else {
-            list.push({ surface, name });
-          }
-        });
-        return list;
-      }
-
-      function classifyFailure(surface, ray) {
-        if (!surface || !ray) return "unknown";
-        if (typeof surface.incident !== "function") return "unknown";
-        const hitPoint = surface.incident(ray);
-        if (!hitPoint) return "incident";
-
-        const type = String(surface.type || "").toLowerCase();
-        const nBefore = Number(surface.n_before);
-        const nAfter = Number(surface.n_after);
-        if (!Number.isFinite(nBefore) || !Number.isFinite(nAfter) || nAfter === 0) return "unknown";
-
-        // Spherical surface: compute Snell condition directly to identify TIR.
-        if (type === "spherical" && Number.isFinite(Number(surface.r))) {
-          const r = Number(surface.r);
-          const pos = surface.position || { x: 0, y: 0, z: 0 };
-          const incidentDir = ray.getDirection().clone().normalize();
-          let normal;
-          if (!Number.isFinite(r) || Math.abs(r) > 1e12) {
-            normal = new THREE.Vector3(0, 0, 1);
-          } else {
-            const center = new THREE.Vector3(pos.x, pos.y, pos.z + r);
-            normal = r < 0
-              ? hitPoint.clone().sub(center).normalize()
-              : center.clone().sub(hitPoint).normalize();
-          }
-          if (normal.dot(incidentDir) < 0) normal.multiplyScalar(-1);
-          const cos1 = Math.max(-1, Math.min(1, normal.dot(incidentDir)));
-          const sin1Sq = Math.max(0, 1 - cos1 * cos1);
-          const sin2 = (nBefore / nAfter) * Math.sqrt(sin1Sq);
-          if (sin2 > 1 + 1e-10) return "tir";
-          return "unknown";
-        }
-
-        return "unknown";
-      }
-
-      function sliceForHud(s) {
-        if (!s || typeof s !== "object") return null;
-        const p = s.profile;
-        return {
-          z: s.z,
-          depth: s.depth,
-          ratio: s.ratio,
-          size: s.size,
-          profile: p
-            ? {
-                at: p.at,
-                angleMajorDeg: p.angleMajorDeg,
-                angleMinorDeg: p.angleMinorDeg,
-                j0: p.j0,
-                j45: p.j45,
-                wMajor: p.wMajor,
-                wMinor: p.wMinor,
-                majorDirection: p.majorDirection,
-                minorDirection: p.minorDirection,
-              }
-            : null,
-        };
-      }
-
-      /** HUD 복사용: slices 전체는 용량 때문에 count + 첫/끝만 포함 */
-      function formatSturmSnapshotForHud(sturmResult) {
-        if (!sturmResult || typeof sturmResult !== "object") {
-          return { error: "no_sturm_result" };
-        }
-        const slices = sturmResult.slices_info?.slices;
-        const count = Number(sturmResult.slices_info?.count) || (Array.isArray(slices) ? slices.length : 0);
-        const summary = { count };
-        if (Array.isArray(slices) && slices.length > 0) {
-          summary.first = sliceForHud(slices[0]);
-          summary.last = sliceForHud(slices[slices.length - 1]);
-        }
-        const sturmInfo = Array.isArray(sturmResult.sturm_info)
-          ? sturmResult.sturm_info.map(function (item) {
-              return {
-                line: item.line,
-                wavelength_nm: item.wavelength_nm,
-                color: item.color,
-                ray_count: item.ray_count,
-                has_astigmatism: item.has_astigmatism,
-                method: item.method,
-                analysis_axis: item.analysis_axis,
-                anterior: sliceForHud(item.anterior),
-                posterior: sliceForHud(item.posterior),
-                approx_center: item.approx_center ?? null,
-              };
-            })
-          : [];
-        return { slices_info: summary, sturm_info: sturmInfo };
-      }
-
       function toFinitePoint(pointLike) {
         if (!pointLike) return null;
         const x = Number(pointLike.x);
@@ -1396,16 +1251,7 @@
 
       function runSimulationAndRender() {
         clearSimulationObjects();
-        const zeroLensState = Object.assign({}, uiState, {
-          spectacleEnabled: false,
-          crossCylinderEnabled: false,
-          spectacleP: 0,
-          spectaclePAx: 0,
-        });
-        const orthoRefState = buildOrthophoricReferenceState(zeroLensState);
-        const eyePrismState = Object.assign({}, zeroLensState);
         const lensConfigs = buildLensConfigs(uiState);
-        const hasLens = Array.isArray(lensConfigs) && lensConfigs.length > 0;
         const engine = new SCAXEngine({
           eyeModel: uiState.eyeModel,
           pupil_type: uiState.pupilType,
@@ -1440,7 +1286,6 @@
         addSimulationObject(eyeRenderGroup);
         const simulationResult = engine.simulate();
         console.log("SIMULATION RESULT : ", simulationResult);
-        const astigmatismInfo = simulationResult?.info?.astigmatism || null;
         const prismInfo = simulationResult?.info?.prism
           ? {
               eye: simulationResult.info.prism.eye
@@ -1478,13 +1323,15 @@
         const tracedRays = Array.isArray(simulationResult?.traced_rays)
           ? simulationResult.traced_rays
           : [];
-<<<<<<< Updated upstream
-=======
-        const reflectedRays = uiState.showReflectedRays
-          ? (Array.isArray(engine.traceReflectedRays?.()) ? engine.traceReflectedRays() : [])
-          : [];
         /*
->>>>>>> Stashed changes
+        const zeroLensState = Object.assign({}, uiState, {
+          spectacleEnabled: false,
+          crossCylinderEnabled: false,
+          spectacleP: 0,
+          spectaclePAx: 0,
+        });
+        const orthoRefState = buildOrthophoricReferenceState(zeroLensState);
+        const eyePrismState = Object.assign({}, zeroLensState);
         const affinePairCount = tracedRays
           .map(function (ray) {
             const points = getRayPoints(ray);
@@ -1541,30 +1388,9 @@
         const sturmInfo = Array.isArray(sturmResult?.sturm_info) ? sturmResult.sturm_info : [];
         const sourceRays = engine?.light_source?.emitRays ? engine.light_source.emitRays() : [];
 
-        let meshCount = 0;
-        let vertexCount = 0;
-        let triangleCount = 0;
-        let meridianLineCount = 0;
-        const compoundSummaries = [];
-
         surfaces.forEach(function (surface, index) {
           if (!surface) return;
           if (isPupilStopSurface(surface) && !uiState.showPupilDisk) return;
-          if (String(surface.type || "").toLowerCase() === "compound") {
-            const toric = surface.toricSurface || null;
-            const spherical = surface.sphericalSurface || null;
-            const toricZ = Number(toric?.position?.z);
-            const sphericalZ = Number(spherical?.position?.z);
-            const thicknessMm = Number.isFinite(toricZ) && Number.isFinite(sphericalZ)
-              ? (sphericalZ - toricZ)
-              : Number.NaN;
-            compoundSummaries.push({
-              name: String(surface.name || "compound"),
-              toricZ,
-              sphericalZ,
-              thicknessMm,
-            });
-          }
 
           const maybeBuffers = buildGeometryForSurface(surface, estimateSurfaceRadius(surface));
           const buffers = Array.isArray(maybeBuffers) ? maybeBuffers : [maybeBuffers];
@@ -1597,10 +1423,6 @@
             } else {
               addSimulationObject(mesh);
             }
-
-            meshCount += 1;
-            vertexCount += buffer.positions.length / 3;
-            triangleCount += buffer.indices.length / 3;
           });
         });
 
@@ -1624,20 +1446,13 @@
             const major = drawMeridian(part, axisDeg, halfLength, 0x10b981);
             if (major) {
               addSimulationObject(major, isEyeSurface ? eyeGeometryGroup : null);
-              meridianLineCount += 1;
             }
             const minor = drawMeridian(part, axisDeg + 90, halfLength, 0xf59e0b);
             if (minor) {
               addSimulationObject(minor, isEyeSurface ? eyeGeometryGroup : null);
-              meridianLineCount += 1;
             }
           });
         });
-
-        let rayCount = 0;
-        let raySegmentCount = 0;
-        let sourcePointCount = 0;
-        let sourceDirectionArrowCount = 0;
 
         // Visualize light source independently from tracing success/failure.
         const sourceTiltQuat = new THREE.Quaternion().setFromEuler(
@@ -1679,7 +1494,6 @@
           });
           const sourcePointCloud = new THREE.Points(sourcePointGeometry, sourcePointMaterial);
           addSimulationObject(sourcePointCloud);
-          sourcePointCount = sourcePoints.length;
 
           // Draw source center marker + mean incident direction.
           const sourceCenter = sourcePoints.reduce(function (acc, p) { return acc.add(p); }, new THREE.Vector3())
@@ -1693,7 +1507,6 @@
             const dir = meanSourceDir.normalize();
             const arrow = new THREE.ArrowHelper(dir, sourceCenter, 8.0, 0x22d3ee, 1.6, 0.9);
             addSimulationObject(arrow);
-            sourceDirectionArrowCount = 1;
           }
         }
 
@@ -1720,127 +1533,9 @@
 
           const line = new THREE.Line(geometry, material);
           addSimulationObject(line);
-
-          rayCount += 1;
-          raySegmentCount += Math.max(0, points.length - 1);
         });
-
-        const traceSurfaceList = flattenTraceSurfaces(
-          []
-            .concat(engine.lens || [])
-            .concat(engine.surfaces || [])
-            .sort(function (a, b) {
-              return Number(a?.position?.z || 0) - Number(b?.position?.z || 0);
-            }),
-        );
-        const failureBySurface = {};
-        traceSurfaceList.forEach(function (item) {
-          failureBySurface[item.name] = 0;
-        });
-        const failureReasonBySurface = {};
-        traceSurfaceList.forEach(function (item) {
-          failureReasonBySurface[item.name] = { incident: 0, tir: 0, unknown: 0 };
-        });
-        let debugSuccessCount = 0;
-        let debugFailCount = 0;
-        const lens2FrontIncidentStats = {
-          count: 0,
-          originMinusFrontZMin: Number.POSITIVE_INFINITY,
-          originMinusFrontZMax: Number.NEGATIVE_INFINITY,
-          originBehindOrOnFrontCount: 0,
-          originInFrontOfSurfaceCount: 0,
-          directionZMin: Number.POSITIVE_INFINITY,
-          directionZMax: Number.NEGATIVE_INFINITY,
-          directionZPositiveCount: 0,
-          directionZNegativeCount: 0,
-          directionZNearZeroCount: 0,
-          localF0Min: Number.POSITIVE_INFINITY,
-          localF0Max: Number.NEGATIVE_INFINITY,
-          localF0NonFiniteCount: 0,
-          discriminantMin: Number.POSITIVE_INFINITY,
-          discriminantMax: Number.NEGATIVE_INFINITY,
-          discriminantNegativeCount: 0,
-          noPositiveRootCount: 0,
-        };
-
-        sourceRays.forEach(function (srcRay) {
-          let activeRay = srcRay.clone();
-          let failed = false;
-          for (let i = 0; i < traceSurfaceList.length; i++) {
-            const item = traceSurfaceList[i];
-            const nextRay = item.surface.refract(activeRay);
-            if (!nextRay) {
-              failureBySurface[item.name] += 1;
-              const reason = classifyFailure(item.surface, activeRay);
-              if (reason === "incident") failureReasonBySurface[item.name].incident += 1;
-              else if (reason === "tir") failureReasonBySurface[item.name].tir += 1;
-              else failureReasonBySurface[item.name].unknown += 1;
-
-              if (item.name === "lens_st_2_spherical" && reason === "incident") {
-                const origin = activeRay?.endPoint ? activeRay.endPoint() : null;
-                const direction = activeRay?.getDirection ? activeRay.getDirection() : null;
-                const surfaceZ = Number(item?.surface?.position?.z);
-                const originZ = Number(origin?.z);
-                const directionZ = Number(direction?.z);
-                if (Number.isFinite(surfaceZ) && Number.isFinite(originZ)) {
-                  const dz = originZ - surfaceZ;
-                  lens2FrontIncidentStats.count += 1;
-                  lens2FrontIncidentStats.originMinusFrontZMin = Math.min(lens2FrontIncidentStats.originMinusFrontZMin, dz);
-                  lens2FrontIncidentStats.originMinusFrontZMax = Math.max(lens2FrontIncidentStats.originMinusFrontZMax, dz);
-                  if (dz > 0) lens2FrontIncidentStats.originInFrontOfSurfaceCount += 1;
-                  else lens2FrontIncidentStats.originBehindOrOnFrontCount += 1;
-                }
-                if (Number.isFinite(directionZ)) {
-                  lens2FrontIncidentStats.directionZMin = Math.min(lens2FrontIncidentStats.directionZMin, directionZ);
-                  lens2FrontIncidentStats.directionZMax = Math.max(lens2FrontIncidentStats.directionZMax, directionZ);
-                  if (directionZ > 1e-9) lens2FrontIncidentStats.directionZPositiveCount += 1;
-                  else if (directionZ < -1e-9) lens2FrontIncidentStats.directionZNegativeCount += 1;
-                  else lens2FrontIncidentStats.directionZNearZeroCount += 1;
-                }
-              }
-              debugFailCount += 1;
-              failed = true;
-              break;
-            }
-            activeRay = nextRay;
-          }
-          if (!failed) debugSuccessCount += 1;
-        });
-
-        const traceSurfaceOrderText = traceSurfaceList.length
-          ? traceSurfaceList.map(function (item) { return item.name; }).join(" -> ")
-          : "none";
-        const failureEntries = Object.entries(failureBySurface)
-          .sort(function (a, b) { return b[1] - a[1]; });
-        const failureText = failureEntries.length
-          ? failureEntries.map(function (item) { return item[0] + ":" + item[1]; }).join(", ")
-          : "none";
-        const failureReasonText = failureEntries.length
-          ? failureEntries.map(function (item) {
-            const name = item[0];
-            const reason = failureReasonBySurface[name] || { incident: 0, tir: 0, unknown: 0 };
-            return name + "(incident=" + reason.incident + ",tir=" + reason.tir + ",unknown=" + reason.unknown + ")";
-          }).join(", ")
-          : "none";
-        const lens2FrontZRelationText = lens2FrontIncidentStats.count > 0
-          ? (
-            "count=" + lens2FrontIncidentStats.count +
-            ", dz(origin-front) min/max=" +
-            lens2FrontIncidentStats.originMinusFrontZMin.toFixed(6) + "/" +
-            lens2FrontIncidentStats.originMinusFrontZMax.toFixed(6) +
-            ", behindOrOn=" + lens2FrontIncidentStats.originBehindOrOnFrontCount +
-            ", inFront=" + lens2FrontIncidentStats.originInFrontOfSurfaceCount +
-            ", dir.z min/max=" +
-            lens2FrontIncidentStats.directionZMin.toFixed(6) + "/" +
-            lens2FrontIncidentStats.directionZMax.toFixed(6)
-          )
-          : "none";
 
         const VISUAL_Y_OFFSET = 0.0;
-        let sturmIntervalCount = 0;
-        let sturmApproxMarkerCount = 0;
-        let sturmFallbackPointCount = 0;
-        let sturmFocalLineCount = 0;
         sturmInfo.forEach(function (item) {
           const color = Number.isFinite(item?.color) ? item.color : 0x60a5fa;
           const anteriorPoint = toFinitePoint(item?.anterior?.profile?.at);
@@ -1861,17 +1556,15 @@
             });
             const intervalLine = new THREE.Line(intervalGeometry, intervalMaterial);
             addSimulationObject(intervalLine);
-            sturmIntervalCount += 1;
           }
 
-          if (hasAstigmatism && createOrientedFocalLine(item?.anterior?.profile, color, VISUAL_Y_OFFSET)) sturmFocalLineCount += 1;
-          if (hasAstigmatism && createOrientedFocalLine(item?.posterior?.profile, color, VISUAL_Y_OFFSET)) sturmFocalLineCount += 1;
+          if (hasAstigmatism) createOrientedFocalLine(item?.anterior?.profile, color, VISUAL_Y_OFFSET);
+          if (hasAstigmatism) createOrientedFocalLine(item?.posterior?.profile, color, VISUAL_Y_OFFSET);
 
           if (approxCenterPoint) {
             const elevatedApproxCenterPoint = approxCenterPoint.clone();
             elevatedApproxCenterPoint.y += VISUAL_Y_OFFSET;
             createMarker(elevatedApproxCenterPoint, color, 0.7);
-            sturmApproxMarkerCount += 1;
           }
         });
 
@@ -1886,76 +1579,6 @@
         if (prismInfo?.combined) {
           drawPrismArrow(prismArrowOrigin.clone().add(new THREE.Vector3(0, 0, -2.4)), prismInfo.combined, 0xef4444, 4.0, 1.2);
         }
-
-        const compoundText = compoundSummaries.length
-          ? compoundSummaries
-            .map(function (item) {
-              const toricZ = Number.isFinite(item.toricZ) ? item.toricZ.toFixed(4) : "NaN";
-              const sphericalZ = Number.isFinite(item.sphericalZ) ? item.sphericalZ.toFixed(4) : "NaN";
-              const thicknessMm = Number.isFinite(item.thicknessMm) ? item.thicknessMm.toFixed(4) : "NaN";
-              return item.name + " | toricZ=" + toricZ + " | sphericalZ=" + sphericalZ + " | thickness=" + thicknessMm + "mm";
-            })
-            .join("\n")
-          : "none";
-
-        const sturmHudJson = JSON.stringify(formatSturmSnapshotForHud(sturmResult), null, 2);
-
-        hud.textContent =
-        "SCAX UMD Mesh Render Test\n" +
-        "module: SCAXEngine from dist/scax-engine.js (cache-busted each load)\n" +
-        "config: model=" + uiState.eyeModel +
-        ", pupil=" + uiState.pupilType +
-        ", pupilDisk=" + (uiState.showPupilDisk ? "show" : "hide") +
-        ", eye=(" + uiState.eyeS + "," + uiState.eyeC + "," + uiState.eyeAx + ")" +
-        ", eyePrismBase=(" + uiState.eyeP + "Δ@" + uiState.eyePAx + "°)" +
-        ", eyeTilt=(" + uiState.eyeTiltX + "°, " + uiState.eyeTiltY + "°)" +
-        ", light=" + uiState.lightSourceType +
-        ", lightPos=(" + uiState.lightPosX + "," + uiState.lightPosY + "," + uiState.lightPosZ + ")" +
-        ", lightTilt=(" + uiState.lightTiltX + "°, " + uiState.lightTiltY + "°)" +
-        ", spec=" + (uiState.spectacleEnabled ? "on" : "off") +
-        (uiState.spectacleEnabled ? " (base " + uiState.spectacleP + "Δ@" + uiState.spectaclePAx + "°)" : "") +
-        ", x-cyl=" + (uiState.crossCylinderEnabled
-          ? "on (+0.25/−0.25 D, ax=" + uiState.crossCylinderAx + "°)"
-          : "off") + "\n" +
-        "compound(toricZ->sphericalZ, +z) check:\n" + compoundText + "\n" +
-        "rays(simulated/rendered): " + tracedRays.length + " / " + rayCount + "\n" +
-        "source points(rendered): " + sourcePointCount + "\n" +
-        "source direction arrows: " + sourceDirectionArrowCount + "\n" +
-        "ray segments: " + raySegmentCount + "\n" +
-        "sturm intervals: " + sturmIntervalCount + "\n" +
-        "sturm focal lines: " + sturmFocalLineCount + "\n" +
-        "sturm approx markers: " + sturmApproxMarkerCount + "\n" +
-        "sturm fallback points: " + sturmFallbackPointCount + "\n" +
-        "surface meridians: " + meridianLineCount + "\n" +
-        "trace debug success/fail: " + debugSuccessCount + " / " + debugFailCount + "\n" +
-        "trace debug order: " + traceSurfaceOrderText + "\n" +
-        "trace debug fail@surface: " + failureText + "\n" +
-        "trace debug fail reason: " + failureReasonText + "\n" +
-        "lens_st_2_spherical z relation: " + lens2FrontZRelationText + "\n" +
-        "eye rotation(for render): x=" + toFixedOrNa(eyeRotationForRender?.x_deg, 3) +
-        "°, y=" + toFixedOrNa(eyeRotationForRender?.y_deg, 3) +
-        "°, mag=" + toFixedOrNa(eyeRotationForRender?.magnitude_deg, 3) + "°\n" +
-        "eye prism effect: x=" + toFixedOrNa(prismInfo?.eye?.x, 4) +
-        ", y=" + toFixedOrNa(prismInfo?.eye?.y, 4) +
-        ", mag=" + toFixedOrNa(prismInfo?.eye?.magnitude, 4) +
-        ", ang=" + toFixedOrNa(prismInfo?.eye?.angle_deg, 2) + "°\n" +
-        "lens prism total: x=" + toFixedOrNa(prismInfo?.lens?.x, 4) +
-        ", y=" + toFixedOrNa(prismInfo?.lens?.y, 4) +
-        ", mag=" + toFixedOrNa(prismInfo?.lens?.magnitude, 4) +
-        ", ang=" + toFixedOrNa(prismInfo?.lens?.angle_deg, 2) + "°\n" +
-        "combined prism: x=" + toFixedOrNa(prismInfo?.combined?.x, 4) +
-        ", y=" + toFixedOrNa(prismInfo?.combined?.y, 4) +
-        ", mag=" + toFixedOrNa(prismInfo?.combined?.magnitude, 4) +
-        ", ang=" + toFixedOrNa(prismInfo?.combined?.angle_deg, 2) + "°\n" +
-        "astig eye: " + formatAstigmatismSummaryGroups(astigmatismInfo?.eye) + "\n" +
-        "astig combined: " + formatAstigmatismSummaryGroups(astigmatismInfo?.combined) + "\n" +
-        "meshes: " + meshCount + "\n" +
-        "vertices: " + vertexCount + "\n" +
-        "triangles: " + triangleCount + "\n" +
-        "status: geometry + rays + sturm rendered\n" +
-        "\n======== STURM (copy JSON below) ========\n" +
-        sturmHudJson +
-        "\n======== /STURM ========";
 
         /*
         if (!affineResult) {
