@@ -1,5 +1,4 @@
 import { Euler, Quaternion, Vector3 } from "three";
-import Affine, { AffinePair } from "./affine/affine";
 import {
   GridLightSource,
   GridLightSourceProps,
@@ -121,8 +120,6 @@ export type SimulationResultInfo = {
   };
 };
 
-export type AffineAnalysisResult = ReturnType<Affine["estimate"]>;
-
 /**
  * legacy simulator.js를 TypeScript로 옮긴 핵심 시뮬레이터입니다.
  * - 광원 광선을 생성하고
@@ -139,9 +136,7 @@ export class SCAXEngineCore {
   private tracedRays: Ray[] = [];
   private lastSourceRaysForSturm: Ray[] = [];
   private sturm: Sturm;
-  private affine: Affine;
   private lastSturmGapAnalysis: ReturnType<Sturm["calculate"]> | null = null;
-  private lastAffineAnalysis: ReturnType<Affine["estimate"]> = null;
   private pupilDiameterMm!: number | null;
   private hasPupilStop!: boolean;
   private eyePower!: SCAxPower;
@@ -170,7 +165,6 @@ export class SCAXEngineCore {
 
   constructor(props: SCAXEngineProps = {}) {
     this.sturm = new Sturm();
-    this.affine = new Affine();
     this.configure(props);
   }
 
@@ -189,7 +183,6 @@ export class SCAXEngineCore {
     this.tracedRays = [];
     this.lastSourceRaysForSturm = [];
     this.lastSturmGapAnalysis = null;
-    this.lastAffineAnalysis = null;
     this.surfaces = [];
     this.lens = [];
     this.sortedEyeSurfaces = [];
@@ -198,7 +191,6 @@ export class SCAXEngineCore {
 
   private configure(props: SCAXEngineProps = {}) {
     this.lastSturmGapAnalysis = null;
-    this.lastAffineAnalysis = null;
     const {
       eyeModel = "gullstrand",
       eye = { s: 0, c: 0, ax: 0, p: 0, p_ax: 0 },
@@ -533,20 +525,6 @@ export class SCAXEngineCore {
     return this.lastSturmGapAnalysis;
   }
 
-  public getAffineAnalysis(): AffineAnalysisResult {
-    /*
-    if (!this.tracedRays.length) {
-      this.simulate();
-    }
-    if (!this.lastAffineAnalysis) {
-      this.lastAffineAnalysis = this.estimateAffineDistortion(this.createAffinePairs(this.tracedRays));
-    }
-    return this.lastAffineAnalysis;
-    */
-    // Affine analysis is intentionally disabled for now.
-    return null;
-  }
-
   private surfaceOrderZ(surface: Surface) {
     const z = Number(this.readSurfacePosition(surface)?.z);
     return Number.isFinite(z) ? z : 0;
@@ -837,38 +815,6 @@ export class SCAXEngineCore {
     return 2 * Math.hypot(j0, j45);
   }
 
-  // Kept for later review/release.
-  private estimateAffineDistortion(pairs: AffinePair[]) {
-    const inputPairs = Array.isArray(pairs) ? pairs : [];
-    this.lastAffineAnalysis = this.affine.estimate(inputPairs);
-    return this.lastAffineAnalysis;
-  }
-
-  // Kept for later review/release.
-  private createAffinePairs(rays: Ray[]): AffinePair[] {
-    return (Array.isArray(rays) ? rays : [])
-      .map((ray) => {
-        const points = this.getRayPoints(ray);
-        if (!Array.isArray(points) || points.length < 2) return null;
-        const source = points[0];
-        const target = points[points.length - 1];
-        const sx = Number(source?.x);
-        const sy = Number(source?.y);
-        const tx = Number(target?.x);
-        const ty = Number(target?.y);
-        if (
-          !Number.isFinite(sx)
-          || !Number.isFinite(sy)
-          || !Number.isFinite(tx)
-          || !Number.isFinite(ty)
-        ) {
-          return null;
-        }
-        return { sx, sy, tx, ty };
-      })
-      .filter((pair): pair is AffinePair => Boolean(pair));
-  }
-
 }
 
 /**
@@ -917,9 +863,5 @@ export default class SCAXEngine {
 
   public sturmCalculation(rays?: Ray[]) {
     return this.core.sturmCalculation(rays);
-  }
-
-  public getAffineAnalysis(): AffineAnalysisResult {
-    return this.core.getAffineAnalysis();
   }
 }

@@ -3,7 +3,6 @@ export { SCAXEngineCore } from "./scax-engine";
 export type { SturmProfileWorldZBounds } from "./sturm/sturm";
 export { default as Ray } from "./ray/ray";
 export type { RayProps } from "./ray/ray";
-export type { AffinePair } from "./affine/affine";
 export type {
   EyeModel,
   PupilType,
@@ -17,5 +16,4 @@ export type {
   PrismSummaryItem,
   SimulationResultInfo,
   SimulateResult,
-  AffineAnalysisResult,
 } from "./scax-engine";
