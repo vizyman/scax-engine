@@ -169,24 +169,17 @@ export default class STSurface extends Surface {
     const n = resolveRefractiveIndex(this.n, line);
     const nAfter = resolveRefractiveIndex(this.n_after, line);
 
-    const sphericalState = this.sphericalSurface as unknown as {
-      n_before: RefractiveIndexSpec;
-      n_after: RefractiveIndexSpec;
-    };
     if (this.toricSurface) {
-      sphericalState.n_before = n;
-      sphericalState.n_after = nAfter;
-      const toricState = this.toricSurface as unknown as {
-        n_before: RefractiveIndexSpec;
-        n_after: RefractiveIndexSpec;
-      };
-      toricState.n_before = nBefore;
-      toricState.n_after = n;
+      this.sphericalSurface.setRefractiveIndices(n, nAfter);
+      this.toricSurface.setRefractiveIndices(nBefore, n);
       return;
     }
 
-    sphericalState.n_before = nBefore;
-    sphericalState.n_after = n;
+    this.sphericalSurface.setRefractiveIndices(nBefore, n);
+  }
+
+  public getCylinderPower() {
+    return { c: this.c, ax: this.ax };
   }
 
   /**

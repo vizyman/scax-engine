@@ -43,6 +43,11 @@ export default class SphericalSurface extends Surface {
     };
   }
 
+  public setRefractiveIndices(nBefore: RefractiveIndexSpec, nAfter: RefractiveIndexSpec) {
+    this.n_before = normalizeRefractiveIndexSpec(nBefore);
+    this.n_after = normalizeRefractiveIndexSpec(nAfter);
+  }
+
   /**
    * 반경이 너무 크거나 비정상 값이면 평면으로 간주합니다.
    * (legacy 코드의 planar fallback 동작을 그대로 반영)

@@ -88,11 +88,6 @@ export default class Sturm {
     return this.lastResult;
   }
 
-  private getRayPoints(ray: Ray) {
-    const points = (ray as unknown as { points?: Vector3[] }).points;
-    return Array.isArray(points) ? points : [];
-  }
-
   private readonly lineOrder: FraunhoferLine[] = ["g", "F", "e", "d", "C", "r"];
 
   private analysisFrameFromRays(
@@ -121,10 +116,10 @@ export default class Sturm {
     frame: { origin: Vector3; axis: Vector3 },
     depth: number,
   ) {
-    const points = this.getRayPoints(ray);
-    for (let i = 0; i < points.length - 1; i += 1) {
-      const a = points[i];
-      const b = points[i + 1];
+    for (let i = 0; i < ray.getPointCount() - 1; i += 1) {
+      const a = ray.getPointReference(i);
+      const b = ray.getPointReference(i + 1);
+      if (!a || !b) continue;
       const da = a.clone().sub(frame.origin).dot(frame.axis);
       const db = b.clone().sub(frame.origin).dot(frame.axis);
       if ((da <= depth && depth <= db) || (db <= depth && depth <= da)) {
@@ -140,7 +135,9 @@ export default class Sturm {
     let depthMin = Number.POSITIVE_INFINITY;
     let depthMax = Number.NEGATIVE_INFINITY;
     for (const ray of rays ?? []) {
-      for (const point of this.getRayPoints(ray)) {
+      for (let i = 0; i < ray.getPointCount(); i += 1) {
+        const point = ray.getPointReference(i);
+        if (!point) continue;
         const d = point.clone().sub(frame.origin).dot(frame.axis);
         depthMin = Math.min(depthMin, d);
         depthMax = Math.max(depthMax, d);
@@ -408,7 +405,7 @@ export default class Sturm {
     for (const ray of rays) {
       const line = ray.getFraunhoferLine() as FraunhoferLine;
       const wavelength = ray.getWavelengthNm();
-      const color = Number((ray as unknown as { displayColor?: number }).displayColor);
+      const color = ray.getDisplayColor();
       if (!groups.has(line)) {
         groups.set(line, {
           line,

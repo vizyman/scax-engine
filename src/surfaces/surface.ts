@@ -31,6 +31,25 @@ export default abstract class Surface {
 
   abstract refract(ray: Ray): Ray | null;
 
+  public getName() {
+    return this.name;
+  }
+
+  public getPosition() {
+    return this.position.clone();
+  }
+
+  public getTraceHistory() {
+    return {
+      incidentRays: this.incidentRays.map((ray) => ray.clone()),
+      refractedRays: this.refractedRays.map((ray) => ray.clone()),
+    };
+  }
+
+  public getCylinderPower(): { c: number; ax: number } | null {
+    return null;
+  }
+
   public clearTraceHistory() {
     this.incidentRays = [];
     this.refractedRays = [];

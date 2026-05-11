@@ -52,6 +52,11 @@ export default class ToricSurface extends Surface {
     };
   }
 
+  public setRefractiveIndices(nBefore: RefractiveIndexSpec, nAfter: RefractiveIndexSpec) {
+    this.n_before = normalizeRefractiveIndexSpec(nBefore);
+    this.n_after = normalizeRefractiveIndexSpec(nAfter);
+  }
+
   /**
    * Toric 면의 축(meridian) 회전을 위해 사용하는 삼각함수 값입니다.
    * 축(axis) 회전은 axisDeg(도 단위)를 사용합니다.

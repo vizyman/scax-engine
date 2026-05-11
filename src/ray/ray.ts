@@ -64,8 +64,27 @@ export default class Ray {
     return this.direction.clone();
   }
 
+  getPoints() {
+    return this.points.map((point) => point.clone());
+  }
+
+  getPointCount() {
+    return this.points.length;
+  }
+
+  /**
+   * Internal hot-path read accessor. Treat the returned Vector3 as immutable.
+   */
+  getPointReference(index: number) {
+    return this.points[index] ?? null;
+  }
+
   getWavelengthNm() {
     return this.wavelengthNm;
+  }
+
+  getDisplayColor() {
+    return this.displayColor;
   }
 
   getFraunhoferLine() {
@@ -95,5 +114,24 @@ export default class Ray {
     if (last.distanceToSquared(nextOrigin) > EPSILON) {
       this.appendPoint(nextOrigin);
     }
+  }
+
+  withTransformedPath(
+    transformPoint: (point: Vector3) => Vector3,
+    transformDirection: (direction: Vector3) => Vector3,
+  ) {
+    const transformedPoints = this.points
+      .map((point) => transformPoint(point.clone()))
+      .filter(isFiniteVector3);
+    if (!transformedPoints.length) return this;
+
+    const transformedDirection = transformDirection(this.direction.clone()).normalize();
+    if (!isFiniteVector3(transformedDirection) || transformedDirection.lengthSq() < EPSILON) return this;
+
+    const transformed = this.clone();
+    transformed.points = transformedPoints.map((point) => point.clone());
+    transformed.origin = transformedPoints[transformedPoints.length - 1].clone();
+    transformed.direction = transformedDirection;
+    return transformed;
   }
 }
