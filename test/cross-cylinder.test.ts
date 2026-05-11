@@ -60,7 +60,7 @@ describe("Cross cylinder (JCC) vs phoropter UI prescription", () => {
     expect(lensCylinderMagnitude).toBeCloseTo(Math.abs(PHOROPTER_UI_CROSS_CYLINDER_LENS.c), 10);
   });
 
-  it("includeInAstigmatismSummary:false 인 시험 실린더는 eye/lens는 유지되고 combined에만 반영된다", () => {
+  it("isXCyl:true 인 시험 실린더는 eye/lens는 유지되고 combined에만 반영된다", () => {
     const rxLens = {
       s: -1,
       c: -0.5,
@@ -71,7 +71,7 @@ describe("Cross cylinder (JCC) vs phoropter UI prescription", () => {
     const withXcyl = new SCAXEngine({
       eyeModel: "gullstrand",
       eye: { s: 0, c: 0, ax: 0 },
-      lens: [{ ...PHOROPTER_UI_CROSS_CYLINDER_LENS, includeInAstigmatismSummary: false }, { ...rxLens }],
+      lens: [{ ...PHOROPTER_UI_CROSS_CYLINDER_LENS, isXCyl: true }, { ...rxLens }],
       light_source: { type: "grid", width: 4, height: 4, division: 4, z: -20, vergence: 0 },
     });
     const rxOnly = new SCAXEngine({

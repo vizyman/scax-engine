@@ -50,11 +50,11 @@ export type LensConfig = {
   position: { x: number; y: number; z: number };
   tilt: { x: number; y: number };
   /**
-   * false이면 `simulate().info.astigmatism`의 `lens`·`combined` 파워 벡터 합에서 이 항목을 빼고,
-   * 광선 추적·프리즘·Sturm 등은 그대로 적용합니다. (예: 시험용 JCC/크로스실린더)
-   * @default true
+   * true이면 JCC/크로스실린더 등 시험용 렌즈로 간주하여
+   * `simulate().info.astigmatism.lens` 파워 벡터 합에서는 제외합니다(광선 추적·`combined` 요약에는 그대로 포함).
+   * @default false
    */
-  includeInAstigmatismSummary?: boolean;
+  isXCyl?: boolean;
 };
 
 export type EyeConfig = {
@@ -268,7 +268,7 @@ export class SCAXEngineCore {
         x: this.toFiniteNumber(spec?.tilt?.x),
         y: this.toFiniteNumber(spec?.tilt?.y),
       },
-      includeInAstigmatismSummary: spec?.includeInAstigmatismSummary !== false,
+      isXCyl: spec?.isXCyl === true,
     }));
     this.currentProps = {
       eyeModel,
@@ -295,7 +295,7 @@ export class SCAXEngineCore {
           x: this.toFiniteNumber(spec.tilt?.x),
           y: this.toFiniteNumber(spec.tilt?.y),
         },
-        includeInAstigmatismSummary: spec.includeInAstigmatismSummary,
+        isXCyl: spec.isXCyl,
       })),
       light_source: {
         ...light_source,
@@ -621,7 +621,7 @@ export class SCAXEngineCore {
 
   private astigmatismSummaryLensPowers(): SCAxPower[] {
     return this.lensConfigs
-      .filter((spec) => spec.includeInAstigmatismSummary)
+      .filter((spec) => !spec.isXCyl)
       .map((spec) => ({
         s: this.toFiniteNumber(spec.s),
         c: this.toFiniteNumber(spec.c),
