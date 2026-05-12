@@ -603,8 +603,8 @@ export default class SCAXEngine {
     const r = Math.hypot(j0, j45);
 
     return [
-      { tabo: taboAxis, d: m - r },
-      { tabo: orthogonalTabo, d: m + r },
+      { tabo: taboAxis, d: m + r },
+      { tabo: orthogonalTabo, d: m - r },
     ].sort((a, b) => a.d - b.d);
   }
 
