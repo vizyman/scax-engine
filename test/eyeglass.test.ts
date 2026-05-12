@@ -215,8 +215,11 @@ describe("안경 렌즈 동작", () => {
       { s: 0, c: -2.0, ax: 180 },
       [createLensSpec({ s: 0, c: +1.0, ax: 90 })],
     );
-    const result = simulator.simulate();
-    const combined = result.info.astigmatism.combined;
+    simulator.simulate();
+    const combined = simulator.calculateMeridians([
+      { s: 0, c: -2.0, ax: 180 },
+      { s: 0, c: +1.0, ax: 90 },
+    ]);
     expect(combined.length).toBe(2);
     expect(Number.isFinite(combined[0]?.d)).toBe(true);
     expect(Number.isFinite(combined[1]?.d)).toBe(true);

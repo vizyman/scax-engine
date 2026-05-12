@@ -1,10 +1,14 @@
-import { Vector3 } from "three";
+import { Euler, Quaternion, Vector3 } from "three";
 import {
   FraunhoferLine,
   normalizeRefractiveIndexSpec,
   RefractiveIndexSpec,
   resolveRefractiveIndex,
 } from "../optics/refractive-index";
+import {
+  applyPrismVectorToRay,
+  prismVectorFromClinicalBase,
+} from "../optics/prism-on-ray";
 import {
   EYE_ST_SURFACE_OFFSET_MM,
   RAY_SURFACE_ESCAPE_MM,
@@ -31,6 +35,10 @@ export type STSurfaceProps = {
   n_after: RefractiveIndexSpec;
   referencePoint?: { x: number, y: number, z: number };
   thickness?: number;
+  /** 임상 프리즘(Δ). 있으면 굴절 직후 광선에 적용합니다. */
+  p?: number;
+  /** 프리즘 Base 축(°, 렌즈→각막 시점). */
+  p_ax?: number;
 }
 
 export default class STSurface extends Surface {
@@ -48,6 +56,7 @@ export default class STSurface extends Surface {
   private toricSurface: ToricSurface | null;
   private sphericalRadiusMm: number = Number.POSITIVE_INFINITY;
   private toricRadiusPerpMm: number = Number.POSITIVE_INFINITY;
+  private readonly prismVector: { x: number; y: number };
 
   constructor(props: STSurfaceProps) {
     super({ type: "compound", name: props.name, position: props.position, tilt: props.tilt });
@@ -92,6 +101,13 @@ export default class STSurface extends Surface {
     // 복합면: 작은 z에 토릭, 큰 z에 구면(+z 광축 기준 토릭 → 구면 순).
     this.sphericalSurface = this.buildSphericalSurface();
     this.toricSurface = this.buildToricSurface();
+    this.prismVector = prismVectorFromClinicalBase(props.p, props.p_ax);
+  }
+
+  private pushRefractedWithPrism(ray: Ray): Ray {
+    const out = applyPrismVectorToRay(ray, this.prismVector);
+    this.refractedRays.push(out.clone());
+    return out;
   }
 
   /**
@@ -303,16 +319,14 @@ export default class STSurface extends Surface {
           direction,
         );
       }
-      this.refractedRays.push(passthrough.clone());
-      return passthrough;
+      return this.pushRefractedWithPrism(passthrough);
     }
     this.applyChromaticIndicesToSubSurfaces(ray);
     // 원통 성분이 없으면 단일(구면)면으로 처리합니다.
     if (!this.toricSurface) {
       const single = this.sphericalSurface.refract(ray);
       if (!single) return null;
-      this.refractedRays.push(single.clone());
-      return single;
+      return this.pushRefractedWithPrism(single);
     }
 
     // +z 진행: 토릭(작은 z) → 구면(큰 z)
@@ -320,8 +334,7 @@ export default class STSurface extends Surface {
     if (!afterToric) return null;
     const afterSpherical = this.sphericalSurface.refract(afterToric);
     if (!afterSpherical) return null;
-    this.refractedRays.push(afterSpherical.clone());
-    return afterSpherical;
+    return this.pushRefractedWithPrism(afterSpherical);
   }
 
   incident(ray: Ray): Vector3 | null {
@@ -335,5 +348,22 @@ export default class STSurface extends Surface {
 
   public getOptimizedThicknessMm() {
     return this.thickness;
+  }
+
+  public applyRigidRotationAboutPivot(pivot: Vector3, rotation: Quaternion): void {
+    const move = (p0: Vector3) => pivot.clone().add(
+      new Vector3().subVectors(p0, pivot).applyQuaternion(rotation),
+    );
+    const euler = new Euler().setFromQuaternion(rotation, "XYZ");
+    const tx = (euler.x * 180) / Math.PI;
+    const ty = (euler.y * 180) / Math.PI;
+
+    const newTor = move(this.position.clone());
+    const newSph = move(this.sphericalSurface.getWorldPosition());
+    this.setPositionAndTilt(newTor, tx, ty);
+    this.sphericalSurface.setPositionAndTilt(newSph, tx, ty);
+    if (this.toricSurface) {
+      this.toricSurface.setPositionAndTilt(newTor.clone(), tx, ty);
+    }
   }
 }

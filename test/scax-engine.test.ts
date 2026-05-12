@@ -4,20 +4,21 @@ import SCAXEngine from "../src/scax-engine";
 
 describe("SCAXEngine", () => {
   describe("simulate 및 rayTracing", () => {
-    it("추적된 광선 배열과 info(난시/프리즘) 필드를 반환한다", () => {
+    it("추적된 광선 배열을 반환하고 경선/프리즘 계산 API를 사용할 수 있다", () => {
       const simulator = new SCAXEngine({
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
       const result = simulator.simulate();
       expect(Array.isArray(result.traced_rays)).toBe(true);
-      expect(result).toHaveProperty("info");
-      expect(result.info).toHaveProperty("astigmatism");
-      expect(result.info).toHaveProperty("prism");
-      expect(Array.isArray(result.info.astigmatism.eye)).toBe(true);
-      expect(Array.isArray(result.info.astigmatism.combined)).toBe(true);
+      const meridians = simulator.calculateMeridians([{ s: 0, c: -1, ax: 180 }]);
+      const rotation = simulator.calculateEyeRotationByPrism({ p: 1, p_ax: 0 });
+      expect(Array.isArray(meridians)).toBe(true);
+      expect(meridians).toHaveLength(2);
+      expect(Number.isFinite(rotation.x)).toBe(true);
+      expect(Number.isFinite(rotation.y)).toBe(true);
     });
 
-    it("eye/combined 난시 요약에 양주경선 배열이 포함된다", () => {
+    it("복수 S/C/A 입력의 경선 요약에 양주경선 배열이 포함된다", () => {
       const simulator = new SCAXEngine({
         eye: { s: -1, c: -2, ax: 180 },
         lens: [{
@@ -29,10 +30,13 @@ describe("SCAXEngine", () => {
         }],
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
-      const result = simulator.simulate();
-      expect(result.info.astigmatism.eye.length).toBe(2);
-      expect(result.info.astigmatism.combined.length).toBe(2);
-      const [weak, strong] = result.info.astigmatism.combined;
+      simulator.simulate();
+      const combined = simulator.calculateMeridians([
+        { s: -1, c: -2, ax: 180 },
+        { s: 0.5, c: -1, ax: 180 },
+      ]);
+      expect(combined.length).toBe(2);
+      const [weak, strong] = combined;
       expect(Number.isFinite(weak.d)).toBe(true);
       expect(Number.isFinite(strong.d)).toBe(true);
       expect(weak.d).toBeLessThanOrEqual(strong.d);
@@ -55,7 +59,7 @@ describe("SCAXEngine", () => {
       expect(filteredCount).toBeLessThanOrEqual(baseCount);
     });
 
-    it("눈 처방 프리즘과 동일한 렌즈 프리즘이면 net 편위가 0에 가깝다", () => {
+    it("렌즈 프리즘이 있어도 눈 프리즘 회전 계산은 eye 처방만 따른다", () => {
       const simulator = new SCAXEngine({
         eye: { s: 0, c: 0, ax: 0, p: 1, p_ax: 180 },
         lens: [{
@@ -69,13 +73,17 @@ describe("SCAXEngine", () => {
         }],
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
-      const result = simulator.simulate();
-      expect(Math.abs(result.info.prism.combined.p_x)).toBeLessThan(1e-9);
-      expect(Math.abs(result.info.prism.combined.p_y)).toBeLessThan(1e-9);
-      expect(result.info.prism.combined.magnitude).toBeNull();
+      simulator.simulate();
+      const withLens = simulator.calculateEyeRotationByPrism({ p: 1, p_ax: 180 });
+      const withoutLens = new SCAXEngine({
+        eye: { s: 0, c: 0, ax: 0, p: 1, p_ax: 180 },
+        light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
+      }).calculateEyeRotationByPrism({ p: 1, p_ax: 180 });
+      expect(withLens.x).toBeCloseTo(withoutLens.x, 8);
+      expect(withLens.y).toBeCloseTo(withoutLens.y, 8);
     });
 
-    it("eye/lens 모두 교정도수 입력일 때 0도 동일값이면 net 편위가 0에 가깝다", () => {
+    it("동일 축 입력에서 eye 프리즘 회전은 eye 입력과 일치한다", () => {
       const simulator = new SCAXEngine({
         eye: { s: 0, c: 0, ax: 0, p: 2, p_ax: 0 },
         lens: [{
@@ -89,11 +97,10 @@ describe("SCAXEngine", () => {
         }],
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
-      const result = simulator.simulate();
-      expect(Math.abs(result.info.prism.combined.p_x)).toBeLessThan(1e-9);
-      expect(Math.abs(result.info.prism.combined.p_y)).toBeLessThan(1e-9);
-      expect(result.info.prism.combined.magnitude).toBeNull();
-      expect(Math.abs(result.info.prism.lens.p_y)).toBeLessThan(1e-9);
+      simulator.simulate();
+      const rotation = simulator.calculateEyeRotationByPrism({ p: 2, p_ax: 0 });
+      expect(Math.abs(rotation.x)).toBeGreaterThan(0);
+      expect(Number.isFinite(rotation.y)).toBe(true);
     });
 
     it("렌더용 눈 회전량은 내부 ray-tracing 회전과 동일한 부호 규칙을 따른다", () => {
@@ -101,20 +108,20 @@ describe("SCAXEngine", () => {
         eye: { s: 0, c: 0, ax: 0, p: 1, p_ax: 0 },
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
-      const rotation = simulator.getEyeRotation();
+      const rotation = simulator.calculateEyeRotationByPrism({ p: 1, p_ax: 0 });
       // p=1Δ, base 0° 입력이면 eye 내부 회전(yaw -)과 동일하게 x_deg가 음수다.
-      expect(rotation.x_deg).toBeLessThan(0);
-      expect(Math.abs(rotation.magnitude_deg)).toBeCloseTo(0.57, 1);
+      expect(rotation.x).toBeLessThan(0);
+      expect(Math.abs(rotation.x)).toBeCloseTo(0.57, 1);
     });
 
-    it("eye tilt 입력은 프리즘 변환 없이 회전에 그대로 반영된다", () => {
+    it("eye tilt 값은 프리즘 회전 계산 API에 포함되지 않는다", () => {
       const simulator = new SCAXEngine({
         eye: { s: 0, c: 0, ax: 0, p: 0, p_ax: 0, tilt: { x: 3, y: -2 } },
         light_source: { type: "grid", width: 10, height: 10, division: 4, z: -10, vergence: 0 },
       });
-      const rotation = simulator.getEyeRotation();
-      expect(rotation.x_deg).toBeCloseTo(-2, 8);
-      expect(rotation.y_deg).toBeCloseTo(-3, 8);
+      const rotation = simulator.calculateEyeRotationByPrism({ p: 0, p_ax: 0 });
+      expect(rotation.x).toBeCloseTo(0, 8);
+      expect(rotation.y).toBeCloseTo(0, 8);
     });
 
     it("순수 프리즘 렌즈(S=0,C=0)도 Base 기준 반대방향으로 광선을 편위시킨다", () => {
@@ -172,9 +179,9 @@ describe("SCAXEngine", () => {
       expect(prismDir).toBeDefined();
       expect(Math.abs(prismDir!.x)).toBeGreaterThan(Math.abs(baseDir!.x) + 1e-6);
       expect(prismDir!.x).toBeGreaterThan(0);
-      const withEyePrismSim = withEyePrism.simulate();
-      expect(withEyePrismSim.info.prism.eye.magnitude).toBeCloseTo(2, 8);
-      expect(withEyePrism.getEyeRotation().magnitude_deg).toBeGreaterThan(0);
+      withEyePrism.simulate();
+      const rotation = withEyePrism.calculateEyeRotationByPrism({ p: 2, p_ax: 0 });
+      expect(Math.abs(rotation.x)).toBeGreaterThan(0);
     });
 
     it("light_source의 position/tilt가 광로와 진행 방향에 반영된다", () => {
@@ -272,11 +279,10 @@ describe("SCAXEngine", () => {
           tilt: { x: Number.NaN, y: Number.NaN },
         },
       });
-      const rotation = simulator.getEyeRotation();
+      const rotation = simulator.calculateEyeRotationByPrism({ p: Number.NaN, p_ax: Number.NaN });
       const result = simulator.simulate();
-      expect(Number.isFinite(rotation.x_deg)).toBe(true);
-      expect(Number.isFinite(rotation.y_deg)).toBe(true);
-      expect(Number.isFinite(rotation.magnitude_deg)).toBe(true);
+      expect(Number.isFinite(rotation.x)).toBe(true);
+      expect(Number.isFinite(rotation.y)).toBe(true);
       expect(Array.isArray(result.traced_rays)).toBe(true);
     });
 

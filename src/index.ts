@@ -12,10 +12,7 @@ export type {
   EyeConfig,
   EyePowerInput,
   SCAXEngineProps,
-  SCAxPower,
-  AstigmatismSummaryItem,
-  PrismSummaryItem,
-  SimulationResultInfo,
+  MeridianInfo,
   SimulateResult,
   AffineAnalysisResult,
 } from "./scax-engine";

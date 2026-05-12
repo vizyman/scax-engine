@@ -1,4 +1,4 @@
-import { Vector2, Vector3 } from "three";
+import { Euler, Quaternion, Vector2, Vector3 } from "three";
 import Ray from "../ray/ray";
 
 export type SurfaceProps = {
@@ -34,6 +34,27 @@ export default abstract class Surface {
   public clearTraceHistory() {
     this.incidentRays = [];
     this.refractedRays = [];
+  }
+
+  public getWorldPosition(): Vector3 {
+    return this.position.clone();
+  }
+
+  public setPositionAndTilt(position: Vector3, tiltXDeg: number, tiltYDeg: number): void {
+    this.position.copy(position);
+    this.tilt.set(tiltXDeg, tiltYDeg);
+  }
+
+  /**
+   * 안질 tilt가 0인 표면을 전제로, pivot 기준 강체 회전 후 동일 Euler(XYZ) tilt를 부여합니다.
+   */
+  public applyRigidRotationAboutPivot(pivot: Vector3, rotation: Quaternion): void {
+    const p1 = pivot.clone().add(
+      new Vector3().subVectors(this.position, pivot).applyQuaternion(rotation),
+    );
+    const euler = new Euler().setFromQuaternion(rotation, "XYZ");
+    this.position.copy(p1);
+    this.tilt.set((euler.x * 180) / Math.PI, (euler.y * 180) / Math.PI);
   }
 
 }

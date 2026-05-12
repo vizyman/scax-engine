@@ -1,4 +1,4 @@
-import { Vector3 } from "three";
+import { Euler, Quaternion, Vector3 } from "three";
 import Ray from "../ray/ray.js";
 
 /** 프라우호퍼 c선 (빨강) */
@@ -8,10 +8,21 @@ export const CHROMATIC_RED_COLOR = 0xf87171;
 export const CHROMATIC_GREEN_NM = 546.07;
 export const CHROMATIC_GREEN_COLOR = 0x4ade80;
 
+export type LightSourcePose = {
+  position?: { x?: number; y?: number; z?: number };
+  tilt?: { x?: number; y?: number };
+};
+
 export class LightSource {
   protected rays: Ray[];
+  private sourcePosition: Vector3;
+  private sourceRotationQuaternion: Quaternion;
+  private sourceRotationPivot: Vector3;
   constructor() {
     this.rays = [];
+    this.sourcePosition = new Vector3(0, 0, 0);
+    this.sourceRotationQuaternion = new Quaternion();
+    this.sourceRotationPivot = new Vector3(0, 0, 0);
   }
 
   protected directionFromVergence(origin: Vector3, z: number, vergence: number): Vector3 {
@@ -63,8 +74,77 @@ export class LightSource {
     this.rays.push(ray.clone());
   }
 
+  protected configurePose(pose: LightSourcePose | undefined, pivotZ = 0) {
+    const position = pose?.position;
+    const tilt = pose?.tilt;
+    this.sourcePosition = new Vector3(
+      this.toFiniteNumber(position?.x),
+      this.toFiniteNumber(position?.y),
+      this.toFiniteNumber(position?.z),
+    );
+    const tiltXDeg = this.toFiniteNumber(tilt?.x);
+    const tiltYDeg = this.toFiniteNumber(tilt?.y);
+    this.sourceRotationQuaternion = new Quaternion().setFromEuler(new Euler(
+      (tiltXDeg * Math.PI) / 180,
+      (tiltYDeg * Math.PI) / 180,
+      0,
+      "XYZ",
+    ));
+    this.sourceRotationPivot = new Vector3(0, 0, this.toFiniteNumber(pivotZ));
+  }
+
+  private toFiniteNumber(value: unknown, fallback = 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  private getRayPoints(ray: Ray) {
+    const state = ray as unknown as { points?: Vector3[] };
+    return Array.isArray(state.points) ? state.points : [];
+  }
+
+  private rotatePointAroundPivot(point: Vector3, pivot: Vector3) {
+    return point.clone().sub(pivot).applyQuaternion(this.sourceRotationQuaternion).add(pivot);
+  }
+
+  private transformRayAroundPivot(ray: Ray) {
+    const points = this.getRayPoints(ray);
+    if (!points.length) return ray;
+    const transformed = ray.clone();
+    const transformedState = transformed as unknown as {
+      points?: Vector3[];
+      direction?: Vector3;
+      origin?: Vector3;
+    };
+    const nextPoints = points.map((point) => this.rotatePointAroundPivot(point, this.sourceRotationPivot));
+    transformedState.points = nextPoints;
+    transformedState.direction = ray.getDirection().clone().applyQuaternion(this.sourceRotationQuaternion).normalize();
+    transformedState.origin = nextPoints[nextPoints.length - 1].clone();
+    return transformed;
+  }
+
+  private translateRay(ray: Ray) {
+    if (this.sourcePosition.lengthSq() < 1e-12) return ray;
+    const points = this.getRayPoints(ray);
+    if (!points.length) return ray;
+    const translated = ray.clone();
+    const translatedState = translated as unknown as {
+      points?: Vector3[];
+      origin?: Vector3;
+    };
+    const nextPoints = points.map((point) => point.clone().add(this.sourcePosition));
+    translatedState.points = nextPoints;
+    translatedState.origin = nextPoints[nextPoints.length - 1].clone();
+    return translated;
+  }
+
+  private applyPoseToRay(ray: Ray) {
+    const rotated = this.transformRayAroundPivot(ray.clone());
+    return this.translateRay(rotated);
+  }
+
   emitRays() {
-    return this.rays.map((ray) => ray.clone());
+    return this.rays.map((ray) => this.applyPoseToRay(ray));
   }
 }
 
@@ -74,7 +154,7 @@ export type GridLightSourceProps = {
   division: number;
   z: number;
   vergence: number;
-}
+} & LightSourcePose;
 export class GridLightSource extends LightSource {
   private width: number = 0;
   private height: number = 0;
@@ -82,7 +162,7 @@ export class GridLightSource extends LightSource {
   private z: number = 0;
   private vergence: number = 0;
   constructor(props: GridLightSourceProps) {
-    const { width, height, division = 4, z, vergence = 0 } = props;
+    const { width, height, division = 4, z, vergence = 0, position, tilt } = props;
 
     if (division < 4) {
       throw new Error("division must be greater than 4");
@@ -101,6 +181,7 @@ export class GridLightSource extends LightSource {
     this.division = division;
     this.z = z;
     this.vergence = vergence;
+    this.configurePose({ position, tilt }, this.z);
 
     const xStep = this.division > 1 ? this.width / (this.division - 1) : 0;
     const yStep = this.division > 1 ? this.height / (this.division - 1) : 0;
@@ -126,7 +207,7 @@ export class GridRGLightSource extends LightSource {
   private z: number = 0;
   private vergence: number = 0;
   constructor(props: GridRGLightSourceProps) {
-    const { width, height, division = 4, z, vergence = 0 } = props;
+    const { width, height, division = 4, z, vergence = 0, position, tilt } = props;
 
     if (division < 4) {
       throw new Error("division must be greater than 4");
@@ -145,6 +226,7 @@ export class GridRGLightSource extends LightSource {
     this.division = division;
     this.z = z;
     this.vergence = vergence;
+    this.configurePose({ position, tilt }, this.z);
 
     const xStep = this.division > 1 ? this.width / (this.division - 1) : 0;
     const yStep = this.division > 1 ? this.height / (this.division - 1) : 0;
@@ -180,7 +262,7 @@ export type RadialLightSourceProps = {
   angle_division: number;
   z: number;
   vergence: number;
-}
+} & LightSourcePose;
 export class RadialLightSource extends LightSource {
   private radius: number = 0;
   private division: number = 0;
@@ -188,7 +270,7 @@ export class RadialLightSource extends LightSource {
   private z: number = 0;
   private vergence: number = 0;
   constructor(props: RadialLightSourceProps) {
-    const { radius, division = 4, angle_division = 4, z, vergence = 0 } = props;
+    const { radius, division = 4, angle_division = 4, z, vergence = 0, position, tilt } = props;
     if (radius < 0) {
       throw new Error("radius must be greater than or equal to 0");
     }
@@ -211,6 +293,7 @@ export class RadialLightSource extends LightSource {
     this.angle_division = angle_division;
     this.z = z;
     this.vergence = vergence;
+    this.configurePose({ position, tilt }, this.z);
 
     this.createRayFromPoint(new Vector3(0, 0, this.z), this.z, this.vergence);
 

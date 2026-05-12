@@ -312,7 +312,6 @@
             // VD-2 means 2 mm closer to the eye (z increases toward eye).
             position: { x: 0, y: 0, z: SPECTACLE_VD_Z_MM + 2 },
             tilt: { x: 0, y: 0 },
-            includeInAstigmatismSummary: false,
           });
         }
         if (state.spectacleEnabled) {
@@ -1394,6 +1393,43 @@
         return true;
       }
 
+      function normalizePrismAmount(value) {
+        const p = Number(value ?? 0);
+        return Number.isFinite(p) ? Math.max(0, p) : 0;
+      }
+
+      function normalizeAngle360(value) {
+        const d = Number(value ?? 0);
+        if (!Number.isFinite(d)) return 0;
+        return ((d % 360) + 360) % 360;
+      }
+
+      function eyePrismEffectVectorFromPrescription(p, pAx) {
+        const prism = normalizePrismAmount(p);
+        const baseAxis = normalizeAngle360(pAx);
+        const deviationAxis = normalizeAngle360(baseAxis + 180);
+        const rad = (-deviationAxis * Math.PI) / 180;
+        // 동일한 규칙으로 처방(Base) -> 안구 편위 벡터(역벡터) 변환.
+        return {
+          x: -(prism * Math.cos(rad)),
+          y: -(prism * Math.sin(rad)),
+        };
+      }
+
+      function buildEyeRotationForRender(rotationFromPrism, eyeTiltX, eyeTiltY) {
+        const prismXDeg = Number(rotationFromPrism?.x);
+        const prismYDeg = Number(rotationFromPrism?.y);
+        const tiltXDeg = Number(eyeTiltX);
+        const tiltYDeg = Number(eyeTiltY);
+        const xDeg = (Number.isFinite(prismXDeg) ? prismXDeg : 0) + (Number.isFinite(tiltYDeg) ? tiltYDeg : 0);
+        const yDeg = (Number.isFinite(prismYDeg) ? prismYDeg : 0) - (Number.isFinite(tiltXDeg) ? tiltXDeg : 0);
+        return {
+          x_deg: xDeg,
+          y_deg: yDeg,
+          magnitude_deg: Math.hypot(xDeg, yDeg),
+        };
+      }
+
       function runSimulationAndRender() {
         clearSimulationObjects();
         const zeroLensState = Object.assign({}, uiState, {
@@ -1423,7 +1459,17 @@
           lens: lensConfigs,
           light_source: buildLightSourceConfig(uiState),
         });
-        const eyeRotationForRender = engine.getEyeRotation();
+        const eyePrism = {
+          p: Number(uiState.eyeP),
+          p_ax: Number(uiState.eyePAx),
+        };
+        const prismEffect = eyePrismEffectVectorFromPrescription(eyePrism.p, eyePrism.p_ax);
+        const prismRotationOnly = engine.calculateEyeRotationByPrism(eyePrism);
+        const eyeRotationForRender = buildEyeRotationForRender(
+          prismRotationOnly,
+          uiState.eyeTiltX,
+          uiState.eyeTiltY,
+        );
 
         const surfaces = []
           .concat(engine.lens || [])
@@ -1440,102 +1486,37 @@
         addSimulationObject(eyeRenderGroup);
         const simulationResult = engine.simulate();
         console.log("SIMULATION RESULT : ", simulationResult);
-        const astigmatismInfo = simulationResult?.info?.astigmatism || null;
-        const prismInfo = simulationResult?.info?.prism
-          ? {
-              eye: simulationResult.info.prism.eye
-                ? {
-                    x: simulationResult.info.prism.eye.p_x,
-                    y: simulationResult.info.prism.eye.p_y,
-                    magnitude: simulationResult.info.prism.eye.magnitude,
-                    angle_deg: simulationResult.info.prism.eye.prism_angle,
-                  }
-                : null,
-              lens: simulationResult.info.prism.lens
-                ? {
-                    x: simulationResult.info.prism.lens.p_x,
-                    y: simulationResult.info.prism.lens.p_y,
-                    magnitude: simulationResult.info.prism.lens.magnitude,
-                    angle_deg: simulationResult.info.prism.lens.prism_angle,
-                  }
-                : null,
-              combined: simulationResult.info.prism.combined
-                ? {
-                    x: simulationResult.info.prism.combined.p_x,
-                    y: simulationResult.info.prism.combined.p_y,
-                    magnitude: simulationResult.info.prism.combined.magnitude,
-                    angle_deg: simulationResult.info.prism.combined.prism_angle,
-                  }
-                : null,
-            }
-          : (simulationResult?.light_deviation
-            ? {
-                eye: simulationResult.light_deviation.eye_prism_effect || null,
-                lens: simulationResult.light_deviation.lens_prism_total || null,
-                combined: simulationResult.light_deviation.net_prism || null,
-              }
-            : null);
+        const eyePower = {
+          s: -(Number(uiState.eyeS) + (uiState.eyeModel === "gullstrand" ? -1 : 0)),
+          c: -Number(uiState.eyeC),
+          ax: Number(uiState.eyeAx),
+        };
+        const lensPowers = lensConfigs.map(function (lens) {
+          return {
+            s: Number(lens?.s),
+            c: Number(lens?.c),
+            ax: Number(lens?.ax),
+          };
+        });
+        const astigmatismInfo = {
+          eye: [engine.calculateMeridians([eyePower])],
+          lens: lensPowers.map(function (power) { return engine.calculateMeridians([power]); }),
+          combined: [engine.calculateMeridians([eyePower].concat(lensPowers))],
+        };
+        const eyePrismMagnitude = Math.hypot(prismEffect.x, prismEffect.y);
+        const eyePrismAngleRaw = (Math.atan2(prismEffect.y, prismEffect.x) * 180) / Math.PI;
+        const eyePrismAngle = eyePrismMagnitude < 1e-12 ? 0 : ((eyePrismAngleRaw % 360) + 360) % 360;
+        const prismInfo = {
+          eye: {
+            x: prismEffect.x,
+            y: prismEffect.y,
+            magnitude: eyePrismMagnitude >= 1e-9 ? eyePrismMagnitude : null,
+            angle_deg: eyePrismAngle,
+          },
+        };
         const tracedRays = Array.isArray(simulationResult?.traced_rays)
           ? simulationResult.traced_rays
           : [];
-<<<<<<< Updated upstream
-=======
-        const reflectedRays = uiState.showReflectedRays
-          ? (Array.isArray(engine.traceReflectedRays?.()) ? engine.traceReflectedRays() : [])
-          : [];
-        /*
->>>>>>> Stashed changes
-        const affinePairCount = tracedRays
-          .map(function (ray) {
-            const points = getRayPoints(ray);
-            if (!Array.isArray(points) || points.length < 2) return null;
-            const src = points[0];
-            const dst = points[points.length - 1];
-            if (!src || !dst) return null;
-            const sx = Number(src.x);
-            const sy = Number(src.y);
-            const tx = Number(dst.x);
-            const ty = Number(dst.y);
-            if (!Number.isFinite(sx) || !Number.isFinite(sy) || !Number.isFinite(tx) || !Number.isFinite(ty)) return null;
-            return { sx, sy, tx, ty };
-          })
-          .filter(Boolean)
-          .length;
-        const affineResult = engine.getAffineAnalysis();
-        const orthoRefEngine = new SCAXEngine({
-          eyeModel: orthoRefState.eyeModel,
-          pupil_type: orthoRefState.pupilType,
-          eye: {
-            s: orthoRefState.eyeS,
-            c: orthoRefState.eyeC,
-            ax: orthoRefState.eyeAx,
-            p: orthoRefState.eyeP,
-            p_ax: orthoRefState.eyePAx,
-            tilt: { x: orthoRefState.eyeTiltX, y: orthoRefState.eyeTiltY },
-          },
-          lens: buildLensConfigs(orthoRefState),
-          light_source: buildLightSourceConfig(orthoRefState),
-        });
-        orthoRefEngine.simulate();
-        const affineResultOrtho = orthoRefEngine.getAffineAnalysis();
-        const eyePrismEngine = new SCAXEngine({
-          eyeModel: eyePrismState.eyeModel,
-          pupil_type: eyePrismState.pupilType,
-          eye: {
-            s: eyePrismState.eyeS,
-            c: eyePrismState.eyeC,
-            ax: eyePrismState.eyeAx,
-            p: eyePrismState.eyeP,
-            p_ax: eyePrismState.eyePAx,
-            tilt: { x: eyePrismState.eyeTiltX, y: eyePrismState.eyeTiltY },
-          },
-          lens: buildLensConfigs(eyePrismState),
-          light_source: buildLightSourceConfig(eyePrismState),
-        });
-        eyePrismEngine.simulate();
-        const affineResultEyeOnly = eyePrismEngine.getAffineAnalysis();
-        const affineDistortionMetrics = computeAffineDistortionMetrics(affineResult, affineResultOrtho);
-        */
         const sturmResult = engine.sturmCalculation(tracedRays);
         console.log("STURM RESULT : ", sturmResult);
         const sturmInfo = Array.isArray(sturmResult?.sturm_info) ? sturmResult.sturm_info : [];
@@ -1880,13 +1861,6 @@
         if (prismInfo?.eye) {
           drawPrismArrow(prismArrowOrigin, prismInfo.eye, 0x38bdf8, 4.0, 1.2);
         }
-        if (prismInfo?.lens) {
-          drawPrismArrow(prismArrowOrigin.clone().add(new THREE.Vector3(0, 0, -1.2)), prismInfo.lens, 0xf59e0b, 4.0, 1.2);
-        }
-        if (prismInfo?.combined) {
-          drawPrismArrow(prismArrowOrigin.clone().add(new THREE.Vector3(0, 0, -2.4)), prismInfo.combined, 0xef4444, 4.0, 1.2);
-        }
-
         const compoundText = compoundSummaries.length
           ? compoundSummaries
             .map(function (item) {
@@ -1939,14 +1913,6 @@
         ", y=" + toFixedOrNa(prismInfo?.eye?.y, 4) +
         ", mag=" + toFixedOrNa(prismInfo?.eye?.magnitude, 4) +
         ", ang=" + toFixedOrNa(prismInfo?.eye?.angle_deg, 2) + "°\n" +
-        "lens prism total: x=" + toFixedOrNa(prismInfo?.lens?.x, 4) +
-        ", y=" + toFixedOrNa(prismInfo?.lens?.y, 4) +
-        ", mag=" + toFixedOrNa(prismInfo?.lens?.magnitude, 4) +
-        ", ang=" + toFixedOrNa(prismInfo?.lens?.angle_deg, 2) + "°\n" +
-        "combined prism: x=" + toFixedOrNa(prismInfo?.combined?.x, 4) +
-        ", y=" + toFixedOrNa(prismInfo?.combined?.y, 4) +
-        ", mag=" + toFixedOrNa(prismInfo?.combined?.magnitude, 4) +
-        ", ang=" + toFixedOrNa(prismInfo?.combined?.angle_deg, 2) + "°\n" +
         "astig eye: " + formatAstigmatismSummaryGroups(astigmatismInfo?.eye) + "\n" +
         "astig combined: " + formatAstigmatismSummaryGroups(astigmatismInfo?.combined) + "\n" +
         "meshes: " + meshCount + "\n" +
