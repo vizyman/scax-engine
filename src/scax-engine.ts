@@ -211,6 +211,9 @@ export type SCAXPower = { s: number; c: number; ax: number };
 
 export type MeridianInfo = { tabo: number; d: number }[];
 
+/** `Sturm#calculate()` / `SCAXEngine#sturmCalculation()` 반환 구조 */
+export type SturmResult = ReturnType<Sturm["calculate"]>;
+
 export type AffineAnalysisResult = ReturnType<Affine["estimate"]>;
 
 /**
@@ -228,7 +231,7 @@ export class SCAXEngineCore {
   private lastSourceRaysForSturm: Ray[] = [];
   private sturm: Sturm;
   private affine: Affine;
-  private lastSturmGapAnalysis: ReturnType<Sturm["calculate"]> | null = null;
+  private lastSturmGapAnalysis: SturmResult | null = null;
   private lastAffineAnalysis: ReturnType<Affine["estimate"]> = null;
   private sortedLensSurfaces: Surface[] = [];
   private sortedEyeSurfaces: Surface[] = [];
@@ -422,7 +425,7 @@ export class SCAXEngineCore {
    */
   public sturmCalculation(
     rays: Ray[] = this.tracedRays,
-  ) {
+  ): SturmResult {
     this.lastSturmGapAnalysis = this.sturm.calculate(
       rays,
       this.effectiveCylinderFromOpticSurfaces(),
@@ -566,7 +569,7 @@ export default class SCAXEngine {
     return this.core.rayTracing();
   }
 
-  public sturmCalculation(rays?: Ray[]) {
+  public sturmCalculation(rays?: Ray[]): SturmResult {
     return this.core.sturmCalculation(rays);
   }
 
