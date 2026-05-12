@@ -26,6 +26,10 @@ import Surface from "./surfaces/surface";
 
 export type EyeModel = "gullstrand" | "navarro";
 export type PupilType = "constricted" | "neutral" | "dilated" | "none";
+type Position3D = { x: number; y: number; z: number };
+type Rotation2D = { x: number; y: number };
+type PartialPosition3D = { x?: number; y?: number; z?: number };
+type PartialRotation2D = { x?: number; y?: number };
 
 // ================ Light source config ================
 export type LightSourceConfig =
@@ -35,8 +39,8 @@ export type LightSourceConfig =
 
 
 export type LightSourceTransform = {
-  position?: { x?: number; y?: number; z?: number };
-  tilt?: { x?: number; y?: number };
+  position?: PartialPosition3D;
+  tilt?: PartialRotation2D;
 };
 
 const DEFAULT_LIGHT_SOURCE_CONFIG: LightSourceConfig = {
@@ -48,9 +52,9 @@ const DEFAULT_LIGHT_SOURCE_CONFIG: LightSourceConfig = {
   vergence: 0,
 };
 
-export type NormalizedLightSourceConfig = LightSourceConfig & {
-  position: { x: number; y: number; z: number };
-  tilt: { x: number; y: number };
+type NormalizedLightSourceConfig = LightSourceConfig & {
+  position: Position3D;
+  tilt: Rotation2D;
 };
 
 
@@ -61,11 +65,11 @@ export type LensConfig = {
   ax: number;
   p?: number;
   p_ax?: number;
-  position: { x: number; y: number; z: number };
-  tilt: { x: number; y: number };
+  position: Position3D;
+  tilt: Rotation2D;
 };
 
-export type NormalizedLensConfig = LensConfig & {
+type NormalizedLensConfig = LensConfig & {
   p: number;
   p_ax: number;
 };
@@ -77,14 +81,13 @@ export type EyeConfig = {
   ax: number;
   p?: number;
   p_ax?: number;
-  tilt?: { x?: number; y?: number };
+  tilt?: PartialRotation2D;
 };
-export type EyePowerInput = EyeConfig;
 
-export type NormalizedEyeConfig = EyeConfig & {
+type NormalizedEyeConfig = EyeConfig & {
   p: number;
   p_ax: number;
-  tilt: { x: number; y: number };
+  tilt: Rotation2D;
 };
 
 // ================ Default config ================
@@ -98,7 +101,7 @@ export type SCAXEngineProps = {
   pupil_type?: PupilType;
 };
 
-export type NormalizedEngineConfig = {
+type NormalizedEngineConfig = {
   eyeModel: EyeModel;
   eye: NormalizedEyeConfig;
   lens: NormalizedLensConfig[];
@@ -202,31 +205,11 @@ export type SimulateResult = {
   traced_rays: Ray[];
 };
 
+export type PrismPower = { p: number; p_ax: number };
+
+export type SCAXPower = { s: number; c: number; ax: number };
+
 export type MeridianInfo = { tabo: number; d: number }[];
-
-// export type PrismSummaryItem = {
-//   p_x: number;
-//   p_y: number;
-//   prism_angle: number;
-//   magnitude: number | null;
-// };
-
-// export type EyePrismSummaryItem = PrismSummaryItem & {
-//   rot_x: number;
-//   rot_y: number;
-//   rot_magnitude: number;
-// };
-
-// /** `getMeridiansInfo()` — 렌즈별 주경선은 `byLens` */
-// export type MeridiansInfo = {
-//   eye: MeridianInfo;
-//   lens: MeridianInfo[];
-//   combined: MeridianInfo;
-//   byLens: MeridianInfo[];
-// };
-
-// /** `getEyePrismInfo()` */
-// export type EyePrismInfo = EyePrismSummaryItem;
 
 export type AffineAnalysisResult = ReturnType<Affine["estimate"]>;
 
@@ -575,99 +558,6 @@ export default class SCAXEngine {
     this.core.dispose();
   }
 
-  // public getMeridiansInfo(): MeridiansInfo {
-  //   const summarizePowers = (powers: SCAxPower[]): MeridianInfo => {
-  //     let m = 0;
-  //     let j0 = 0;
-  //     let j45 = 0;
-  //     for (const power of powers) {
-  //       const sphere = Number(power?.s ?? 0);
-  //       const cylinder = Number(power?.c ?? 0);
-  //       const axisTABO = Number(power?.ax ?? 0);
-  //       if (!Number.isFinite(sphere) || !Number.isFinite(cylinder) || !Number.isFinite(axisTABO)) continue;
-  //       const axisDeg = TABOToDeg(axisTABO);
-  //       const rad = (2 * axisDeg * Math.PI) / 180;
-  //       const halfMinusCylinder = -cylinder / 2;
-  //       m += sphere + (cylinder / 2);
-  //       j0 += halfMinusCylinder * Math.cos(rad);
-  //       j45 += halfMinusCylinder * Math.sin(rad);
-  //     }
-  //     if (!Number.isFinite(m) || !Number.isFinite(j0) || !Number.isFinite(j45)) return [];
-  //     const axisDeg = (((0.5 * Math.atan2(j45, j0) * 180) / Math.PI) % 180 + 180) % 180;
-  //     const taboAxis = ((DegToTABO(axisDeg) % 180) + 180) % 180;
-  //     const orthogonalTabo = (taboAxis + 90) % 180;
-  //     const r = Math.hypot(j0, j45);
-  //     return [
-  //       { tabo: taboAxis, d: m - r },
-  //       { tabo: orthogonalTabo, d: m + r },
-  //     ].sort((a, b) => a.d - b.d);
-  //   };
-  //   const toFinitePower = (power: SCAxPower): SCAxPower => ({
-  //     s: Number.isFinite(Number(power.s)) ? Number(power.s) : 0,
-  //     c: Number.isFinite(Number(power.c)) ? Number(power.c) : 0,
-  //     ax: Number.isFinite(Number(power.ax)) ? Number(power.ax) : 0,
-  //   });
-
-  //   const eyeConfig = this.normalizedConfig.eye;
-  //   const eyePower: SCAxPower = {
-  //     s: -(eyeConfig.s + (this.normalizedConfig.eyeModel === "gullstrand" ? -1 : 0)),
-  //     c: -eyeConfig.c,
-  //     ax: eyeConfig.ax,
-  //   };
-  //   const lensPowers: SCAxPower[] = this.normalizedConfig.lens.map((spec) => ({
-  //     s: spec.s,
-  //     c: spec.c,
-  //     ax: spec.ax,
-  //   }));
-  //   const lensSummaryPowers: SCAxPower[] = this.normalizedConfig.lens
-  //     .map((spec) => ({
-  //       s: spec.s,
-  //       c: spec.c,
-  //       ax: spec.ax,
-  //     }));
-  //   const eye = summarizePowers([eyePower]);
-  //   const byLens: MeridianInfo[] = [];
-  //   for (const lp of lensSummaryPowers) {
-  //     byLens.push(summarizePowers([toFinitePower(lp)]));
-  //   }
-  //   const lens = byLens;
-  //   const combinedPowers: SCAxPower[] = [eyePower, ...lensPowers.map(toFinitePower)];
-  //   const combined = summarizePowers(combinedPowers);
-  //   return { eye, lens, combined, byLens };
-  // }
-
-  // public getEyePrismInfo(): EyePrismInfo {
-  //   const eyeConfig = this.normalizedConfig.eye;
-  //   const eyePrismEffectVector = eyePrismEffectVectorFromPrescription(
-  //     eyeConfig.p,
-  //     eyeConfig.p_ax,
-  //   );
-  //   const ex = Number.isFinite(eyePrismEffectVector.x) ? eyePrismEffectVector.x : 0;
-  //   const ey = Number.isFinite(eyePrismEffectVector.y) ? eyePrismEffectVector.y : 0;
-  //   const eyeMag = Math.hypot(ex, ey);
-  //   const eyeRot = eyeRotationForRenderDegrees(
-  //     eyeConfig.p,
-  //     eyeConfig.p_ax,
-  //     eyeConfig.tilt,
-  //   );
-  //   const rotX = Number.isFinite(eyeRot.x_deg) ? eyeRot.x_deg : 0;
-  //   const rotY = Number.isFinite(eyeRot.y_deg) ? eyeRot.y_deg : 0;
-  //   const rotMagnitude = Number.isFinite(eyeRot.magnitude_deg) ? eyeRot.magnitude_deg : 0;
-  //   const eyeAngleRaw = (Math.atan2(rotY, rotX) * 180) / Math.PI;
-  //   const eyeAngleDeg = rotMagnitude < 1e-12 ? 0 : ((eyeAngleRaw % 360) + 360) % 360;
-  //   const eyeMagNorm = Number(eyeMag);
-  //   const eye: EyePrismSummaryItem = {
-  //     p_x: ex,
-  //     p_y: ey,
-  //     prism_angle: ((eyeAngleDeg % 360) + 360) % 360,
-  //     magnitude: Number.isFinite(eyeMagNorm) && eyeMagNorm >= 1e-9 ? eyeMagNorm : null,
-  //     rot_x: rotX,
-  //     rot_y: rotY,
-  //     rot_magnitude: rotMagnitude,
-  //   };
-  //   return eye;
-  // }
-
   public simulate(): SimulateResult {
     return this.core.simulate();
   }
@@ -680,7 +570,7 @@ export default class SCAXEngine {
     return this.core.sturmCalculation(rays);
   }
 
-  public calculateMeridians(scaxPowers: { s: number, c: number, ax: number }[]): MeridianInfo {
+  public calculateMeridians(scaxPowers: SCAXPower[]): MeridianInfo {
     const normalize180 = (angle: number) => (((angle % 180) + 180) % 180);
     const taboToDeg = (taboAngle: number) => normalize180(180 - taboAngle);
     const degToTabo = (degreeAngle: number) => normalize180(180 - degreeAngle);
@@ -715,7 +605,7 @@ export default class SCAXEngine {
     ].sort((a, b) => a.d - b.d);
   }
 
-  public calculateEyeRotationByPrism(prism: { p: number, p_ax: number }): { x: number, y: number } {
+  public calculateEyeRotationByPrism(prism: PrismPower): { x: number, y: number } {
     // 프리즘 처방으로 인한 안구 회전량만 계산 (tilt 제외)
     const p = normalizePrismAmount(prism?.p);
     const p_ax = normalizeAngle360(prism?.p_ax);
