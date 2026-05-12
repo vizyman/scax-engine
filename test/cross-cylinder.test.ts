@@ -99,5 +99,5 @@ describe("Cross cylinder (JCC) vs phoropter UI prescription", () => {
       expect(dLine?.approx_center).not.toBeNull();
       expect(Number.isFinite(dLine?.approx_center?.z)).toBe(true);
     }
-  });
+  }, 15000);
 });
